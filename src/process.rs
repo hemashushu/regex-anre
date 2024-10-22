@@ -42,7 +42,7 @@ impl Regex {
     pub fn find<'a, 'b>(&'a self, text: &'b str) -> Option<Match<'a, 'b>> {
         let bytes = text.as_bytes();
         let mut instance = Instance::from_bytes(bytes);
-        if !instance.exec(&self.route, 0) {
+        if !instance.exec(&self.route, 0, bytes.len()) {
             return None;
         }
 
@@ -60,29 +60,13 @@ impl Regex {
     pub fn find_iter<'a, 'b>(&'a self, text: &'b str) -> Matches<'a, 'b> {
         let bytes = text.as_bytes();
         let instance = Instance::from_bytes(bytes);
-        let matches = Matches::new(&self.route, instance);
-        matches
+        Matches::new(&self.route, instance)
     }
 
     pub fn captures<'a, 'b>(&'a self, text: &'b str) -> Option<Captures<'a, 'b>> {
         let bytes = text.as_bytes();
-        self.captures_bytes(bytes)
-    }
-
-    pub fn captures_iter<'a, 'b>(&'a self, text: &'b str) -> CaptureMatches<'a, 'b> {
-        let bytes = text.as_bytes();
-        self.captures_bytes_iter(bytes)
-    }
-
-    pub fn is_match(&self, text: &str) -> bool {
-        let bytes = text.as_bytes();
         let mut instance = Instance::from_bytes(bytes);
-        instance.exec(&self.route, 0)
-    }
-
-    pub fn captures_bytes<'a, 'b>(&'a self, bytes: &'b [u8]) -> Option<Captures<'a, 'b>> {
-        let mut instance = Instance::from_bytes(bytes);
-        if !instance.exec(&self.route, 0) {
+        if !instance.exec(&self.route, 0, bytes.len()) {
             return None;
         }
 
@@ -103,10 +87,16 @@ impl Regex {
         Some(Captures { matches })
     }
 
-    pub fn captures_bytes_iter<'a, 'b>(&'a self, bytes: &'b [u8]) -> CaptureMatches<'a, 'b> {
+    pub fn captures_iter<'a, 'b>(&'a self, text: &'b str) -> CaptureMatches<'a, 'b> {
+        let bytes = text.as_bytes();
         let instance = Instance::from_bytes(bytes);
-        let matches = CaptureMatches::new(&self.route, instance);
-        matches
+        CaptureMatches::new(&self.route, instance)
+    }
+
+    pub fn is_match(&self, text: &str) -> bool {
+        let bytes = text.as_bytes();
+        let mut instance = Instance::from_bytes(bytes);
+        instance.exec(&self.route, 0, bytes.len())
     }
 }
 
@@ -130,7 +120,10 @@ impl<'a, 'b> Iterator for CaptureMatches<'a, 'b> {
     type Item = Captures<'a, 'b>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.instance.exec(self.route, self.last_position) {
+        if !self
+            .instance
+            .exec(self.route, self.last_position, self.instance.bytes.len())
+        {
             return None;
         }
 
@@ -175,7 +168,10 @@ impl<'a, 'b> Iterator for Matches<'a, 'b> {
     type Item = Match<'a, 'b>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.instance.exec(self.route, self.last_position) {
+        if !self
+            .instance
+            .exec(self.route, self.last_position, self.instance.bytes.len())
+        {
             return None;
         }
 
@@ -194,8 +190,8 @@ impl<'a, 'b> Iterator for Matches<'a, 'b> {
 }
 
 impl<'a> Instance<'a> {
-    pub fn exec(&mut self, route: &Route, start: usize) -> bool {
-        start_main_thread(self, route, start, self.bytes.len())
+    pub fn exec(&mut self, route: &Route, start: usize, end: usize) -> bool {
+        start_main_thread(self, route, start, end)
     }
 }
 
@@ -249,8 +245,8 @@ impl<'a, 'b> Captures<'a, 'b> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Match<'a, 'b> {
-    pub start: usize, // position included
-    pub end: usize,   // position excluded
+    pub start: usize, // the position of utf-8 byte stream (value included)
+    pub end: usize,   // the position of utf-8 byte stream (value excluded)
     pub name: Option<&'a str>,
     pub value: &'b str,
 }
@@ -415,14 +411,14 @@ mod tests {
     }
 
     fn new_captures<'a, 'b>(
-        gs: &'a [(
+        mes: &'a [(
             /*start:*/ usize,
             /*end:*/ usize,
             /*name:*/ Option<&'a str>,
             /*value:*/ &'b str,
         )],
     ) -> Captures<'a, 'b> {
-        let matches: Vec<Match> = gs
+        let matches: Vec<Match> = mes
             .iter()
             .map(|item| Match::new(item.0, item.1, item.2, item.3))
             .collect();
@@ -1334,6 +1330,52 @@ mod tests {
 
             assert_eq!(two.as_str(), "0o456");
             assert_eq!(two.range(), 10..15);
+        }
+    }
+
+    #[test]
+    fn test_process_backreference() {
+        {
+            let re = Regex::from_anreg(
+                r#"
+            ('<', (char_word+).name(tag), '>'),
+            char_any+,
+            ("</", tag, '>')
+            "#,
+            )
+            .unwrap();
+            let text = "zero<div>one<div>two</div>three</div>four";
+            let mut matches = re.captures_iter(text);
+
+            assert_eq!(
+                matches.next(),
+                Some(new_captures(&vec![
+                    (4, 37, None, "<div>one<div>two</div>three</div>"),
+                    (5, 8, Some("tag"), "div")
+                ]))
+            );
+        }
+
+        // backreference + lazy
+        {
+            let re = Regex::from_anreg(
+                r#"
+            ('<', (char_word+).name(tag), '>'),
+            char_any+?,
+            ("</", tag, '>')
+            "#,
+            )
+            .unwrap();
+            let text = "zero<div>one<div>two</div>three</div>four";
+            let mut matches = re.captures_iter(text);
+
+            assert_eq!(
+                matches.next(),
+                Some(new_captures(&vec![
+                    (4, 26, None, "<div>one<div>two</div>"),
+                    (5, 8, Some("tag"), "div")
+                ]))
+            );
         }
     }
 }

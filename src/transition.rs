@@ -37,11 +37,10 @@ pub enum Transition {
     LookBehindAssertion(LookBehindAssertionTransition),
 }
 
-// Jump/Epsilon
+// Jump
 pub struct JumpTransition;
 
 pub struct CharTransition {
-    // pub bytes: [u8; 4],
     pub codepoint: u32,
     pub byte_length: usize,
 }
@@ -50,8 +49,6 @@ pub struct CharTransition {
 pub struct SpecialCharTransition;
 
 pub struct StringTransition {
-    // pub length: usize,
-    // pub bytes: Vec<u8>,
     pub codepoints: Vec<u32>,
     pub byte_length: usize,
 }
@@ -114,8 +111,6 @@ pub struct LookBehindAssertionTransition {
 
 impl CharTransition {
     pub fn new(c: char) -> Self {
-        // let mut bytes = [0u8; 4];
-        // character.encode_utf8(&mut bytes);
         let byte_length = c.len_utf8();
         CharTransition {
             codepoint: (c as u32),
@@ -126,8 +121,6 @@ impl CharTransition {
 
 impl StringTransition {
     pub fn new(s: &str) -> Self {
-        // let bytes: Vec<u8> = s.as_bytes().to_vec();
-        // let byte_length = bytes.len();
         let chars: Vec<u32> = s.chars().map(|item| item as u32).collect();
         let byte_length = s.as_bytes().len();
         StringTransition { codepoints: chars, byte_length }
