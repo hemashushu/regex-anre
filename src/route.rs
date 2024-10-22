@@ -89,10 +89,10 @@ impl Route {
         })
     }
 
-    pub fn get_capture_group_name_by_index(&self, index:usize) -> Option<&String> {
+    pub fn get_capture_group_name_by_index(&self, index:usize) -> Option<&str> {
         let n = &self.capture_groups[index].name;
         if let Some(m) = n {
-            Some(m)
+            Some(m.as_str())
         }else {
             None
         }

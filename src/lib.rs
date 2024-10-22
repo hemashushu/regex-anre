@@ -24,4 +24,4 @@ mod utf8reader;
 pub mod process;
 pub mod route;
 
-pub use compiler::compile_from_str;
+pub use process::Regex;

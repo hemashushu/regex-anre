@@ -767,51 +767,6 @@ impl<'a> Compiler<'a> {
                     repetition_type,
                 )),
             );
-
-            //             let anchor_node_index = line.new_node();
-            //             let branch_node_index = line.new_node();
-            //             let out_node_index = line.new_node();
-            //
-            //             line.append_transition(
-            //                 right_node_index,
-            //                 left_node_index,
-            //                 Transition::RepetitionWithAnchor(RepetitionWithAnchorTransition::new(
-            //                     counter_index,
-            //                     repetition_type.clone(),
-            //                 )),
-            //             );
-            //
-            //             line.append_transition(
-            //                 right_node_index,
-            //                 anchor_node_index,
-            //                 Transition::CounterCheck(CounterCheckTransition::new(
-            //                     counter_index,
-            //                     repetition_type,
-            //                 )),
-            //             );
-            //
-            //             line.append_transition(
-            //                 anchor_node_index,
-            //                 branch_node_index,
-            //                 Transition::Jump(JumpTransition),
-            //             );
-            //
-            //             line.append_transition(
-            //                 branch_node_index,
-            //                 out_node_index,
-            //                 Transition::Jump(JumpTransition),
-            //             );
-            //
-            //             line.append_transition(
-            //                 branch_node_index,
-            //                 anchor_node_index,
-            //                 Transition::Backtrack(BacktrackingTransition::new(
-            //                     counter_index,
-            //                     anchor_node_index,
-            //                 )),
-            //             );
-            //
-            //             Ok(Port::new(in_node_index, out_node_index))
         }
 
         Ok(Port::new(in_node_index, out_node_index))
@@ -1907,24 +1862,7 @@ define(letter, ['a'..'f', char_space])
 > 6
   -> 2, Capture start {0}
 < 7
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 5, Counter check %0, times 2
-                       //   -> 3, Repetition %0, times 2
-                       // - 5
-                       //   -> 7, Capture end {0}
-                       // > 6
-                       //   -> 2, Capture start {0}
-                       // < 7
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -1993,29 +1931,7 @@ define(letter, ['a'..'f', char_space])
 > 6
   -> 2, Capture start {0}
 < 7
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 3, Repetition with anchor %0, from 3, to 5
-                       //   -> 5, Counter check %0, from 3, to 5
-                       // - 5
-                       //   -> 6, Jump
-                       // - 6
-                       //   -> 7, Jump
-                       //   -> 5, Backtrack %0 -> 5
-                       // - 7
-                       //   -> 9, Capture end {0}
-                       // > 8
-                       //   -> 2, Capture start {0}
-                       // < 9
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2043,24 +1959,7 @@ define(letter, ['a'..'f', char_space])
 > 6
   -> 2, Capture start {0}
 < 7
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 5, Counter check %0, from 3, to 5
-                       //   -> 3, Repetition %0, from 3, to 5
-                       // - 5
-                       //   -> 7, Capture end {0}
-                       // > 6
-                       //   -> 2, Capture start {0}
-                       // < 7
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2109,34 +2008,7 @@ define(letter, ['a'..'f', char_space])
 > 8
   -> 6, Capture start {0}
 < 9
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 3, Repetition with anchor %0, from 1, to 5
-                       //   -> 5, Counter check %0, from 1, to 5
-                       // - 5
-                       //   -> 6, Jump
-                       // - 6
-                       //   -> 7, Jump
-                       //   -> 5, Backtrack %0 -> 5
-                       // - 7
-                       //   -> 9, Jump
-                       // - 8
-                       //   -> 2, Jump
-                       //   -> 9, Jump
-                       // - 9
-                       //   -> 11, Capture end {0}
-                       // > 10
-                       //   -> 8, Capture start {0}
-                       // < 11
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2169,29 +2041,7 @@ define(letter, ['a'..'f', char_space])
 > 8
   -> 6, Capture start {0}
 < 9
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 5, Counter check %0, from 1, to 5
-                       //   -> 3, Repetition %0, from 1, to 5
-                       // - 5
-                       //   -> 7, Jump
-                       // - 6
-                       //   -> 7, Jump
-                       //   -> 2, Jump
-                       // - 7
-                       //   -> 9, Capture end {0}
-                       // > 8
-                       //   -> 6, Capture start {0}
-                       // < 9
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2257,29 +2107,7 @@ define(letter, ['a'..'f', char_space])
 > 6
   -> 2, Capture start {0}
 < 7
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 3, Repetition with anchor %0, from 3, to MAX
-                       //   -> 5, Counter check %0, from 3, to MAX
-                       // - 5
-                       //   -> 6, Jump
-                       // - 6
-                       //   -> 7, Jump
-                       //   -> 5, Backtrack %0 -> 5
-                       // - 7
-                       //   -> 9, Capture end {0}
-                       // > 8
-                       //   -> 2, Capture start {0}
-                       // < 9
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2307,24 +2135,7 @@ define(letter, ['a'..'f', char_space])
 > 6
   -> 2, Capture start {0}
 < 7
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 5, Counter check %0, from 3, to MAX
-                       //   -> 3, Repetition %0, from 3, to MAX
-                       // - 5
-                       //   -> 7, Capture end {0}
-                       // > 6
-                       //   -> 2, Capture start {0}
-                       // < 7
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2438,29 +2249,7 @@ define(letter, ['a'..'f', char_space])
 > 6
   -> 2, Capture start {0}
 < 7
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 3, Repetition with anchor %0, from 1, to MAX
-                       //   -> 5, Counter check %0, from 1, to MAX
-                       // - 5
-                       //   -> 6, Jump
-                       // - 6
-                       //   -> 7, Jump
-                       //   -> 5, Backtrack %0 -> 5
-                       // - 7
-                       //   -> 9, Capture end {0}
-                       // > 8
-                       //   -> 2, Capture start {0}
-                       // < 9
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2488,24 +2277,7 @@ define(letter, ['a'..'f', char_space])
 > 6
   -> 2, Capture start {0}
 < 7
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 5, Counter check %0, from 1, to MAX
-                       //   -> 3, Repetition %0, from 1, to MAX
-                       // - 5
-                       //   -> 7, Capture end {0}
-                       // > 6
-                       //   -> 2, Capture start {0}
-                       // < 7
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2538,34 +2310,7 @@ define(letter, ['a'..'f', char_space])
 > 8
   -> 6, Capture start {0}
 < 9
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 3, Repetition with anchor %0, from 1, to MAX
-                       //   -> 5, Counter check %0, from 1, to MAX
-                       // - 5
-                       //   -> 6, Jump
-                       // - 6
-                       //   -> 7, Jump
-                       //   -> 5, Backtrack %0 -> 5
-                       // - 7
-                       //   -> 9, Jump
-                       // - 8
-                       //   -> 2, Jump
-                       //   -> 9, Jump
-                       // - 9
-                       //   -> 11, Capture end {0}
-                       // > 10
-                       //   -> 8, Capture start {0}
-                       // < 11
-                       // # {0}"
+# {0}"
             );
         }
 
@@ -2598,29 +2343,7 @@ define(letter, ['a'..'f', char_space])
 > 8
   -> 6, Capture start {0}
 < 9
-# {0}" // "\
-                       // - 0
-                       //   -> 1, Char 'a'
-                       // - 1
-                       //   -> 4, Counter inc %0
-                       // - 2
-                       //   -> 3, Counter reset %0
-                       // - 3
-                       //   -> 0, Jump
-                       // - 4
-                       //   -> 5, Counter check %0, from 1, to MAX
-                       //   -> 3, Repetition %0, from 1, to MAX
-                       // - 5
-                       //   -> 7, Jump
-                       // - 6
-                       //   -> 7, Jump
-                       //   -> 2, Jump
-                       // - 7
-                       //   -> 9, Capture end {0}
-                       // > 8
-                       //   -> 6, Capture start {0}
-                       // < 9
-                       // # {0}"
+# {0}"
             );
         }
     }
