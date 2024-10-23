@@ -14,6 +14,7 @@ mod instance;
 mod lexer;
 mod location;
 mod macroexpander;
+mod rulechecker;
 mod normalizer;
 mod parser;
 mod peekableiter;

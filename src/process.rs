@@ -4,13 +4,12 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use core::str;
-use std::ops::Range;
+use std::ops::{Index, Range};
 
 use crate::{
     compiler::compile_from_str,
     error::Error,
-    instance::{Instance, MatchRange, Thread},
+    instance::{Instance, Thread},
     route::{Route, MAIN_LINE_INDEX},
     transition::CheckResult,
     utf8reader::read_char,
@@ -23,26 +22,20 @@ pub struct Regex {
 impl Regex {
     pub fn new(pattern: &str) -> Result<Self, Error> {
         let route = compile_from_str(pattern)?;
-
-        // DEBUG::
-        println!("{}", route.get_debug_text());
-
         Ok(Regex { route })
     }
 
     pub fn from_anreg(expression: &str) -> Result<Self, Error> {
         let route = compile_from_str(expression)?;
-
-        // DEBUG::
-        println!("{}", route.get_debug_text());
-
         Ok(Regex { route })
     }
 
     pub fn find<'a, 'b>(&'a self, text: &'b str) -> Option<Match<'a, 'b>> {
         let bytes = text.as_bytes();
-        let mut instance = Instance::from_bytes(bytes);
-        if !instance.exec(&self.route, 0, bytes.len()) {
+        let number_of_capture_groups = self.route.capture_groups.len();
+        let mut instance = Instance::from_bytes(bytes, number_of_capture_groups);
+
+        if !instance.exec(&self.route, 0) {
             return None;
         }
 
@@ -59,14 +52,18 @@ impl Regex {
 
     pub fn find_iter<'a, 'b>(&'a self, text: &'b str) -> Matches<'a, 'b> {
         let bytes = text.as_bytes();
-        let instance = Instance::from_bytes(bytes);
+        let number_of_capture_groups = self.route.capture_groups.len();
+        let instance = Instance::from_bytes(bytes, number_of_capture_groups);
+
         Matches::new(&self.route, instance)
     }
 
     pub fn captures<'a, 'b>(&'a self, text: &'b str) -> Option<Captures<'a, 'b>> {
         let bytes = text.as_bytes();
-        let mut instance = Instance::from_bytes(bytes);
-        if !instance.exec(&self.route, 0, bytes.len()) {
+        let number_of_capture_groups = self.route.capture_groups.len();
+        let mut instance = Instance::from_bytes(bytes, number_of_capture_groups);
+
+        if !instance.exec(&self.route, 0) {
             return None;
         }
 
@@ -89,14 +86,18 @@ impl Regex {
 
     pub fn captures_iter<'a, 'b>(&'a self, text: &'b str) -> CaptureMatches<'a, 'b> {
         let bytes = text.as_bytes();
-        let instance = Instance::from_bytes(bytes);
+        let number_of_capture_groups = self.route.capture_groups.len();
+        let instance = Instance::from_bytes(bytes, number_of_capture_groups);
+
         CaptureMatches::new(&self.route, instance)
     }
 
     pub fn is_match(&self, text: &str) -> bool {
         let bytes = text.as_bytes();
-        let mut instance = Instance::from_bytes(bytes);
-        instance.exec(&self.route, 0, bytes.len())
+        let number_of_capture_groups = self.route.capture_groups.len();
+        let mut instance = Instance::from_bytes(bytes, number_of_capture_groups);
+
+        instance.exec(&self.route, 0)
     }
 }
 
@@ -120,10 +121,7 @@ impl<'a, 'b> Iterator for CaptureMatches<'a, 'b> {
     type Item = Captures<'a, 'b>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self
-            .instance
-            .exec(self.route, self.last_position, self.instance.bytes.len())
-        {
+        if !self.instance.exec(self.route, self.last_position) {
             return None;
         }
 
@@ -168,10 +166,7 @@ impl<'a, 'b> Iterator for Matches<'a, 'b> {
     type Item = Match<'a, 'b>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self
-            .instance
-            .exec(self.route, self.last_position, self.instance.bytes.len())
-        {
+        if !self.instance.exec(self.route, self.last_position) {
             return None;
         }
 
@@ -190,8 +185,9 @@ impl<'a, 'b> Iterator for Matches<'a, 'b> {
 }
 
 impl<'a> Instance<'a> {
-    pub fn exec(&mut self, route: &Route, start: usize, end: usize) -> bool {
-        start_main_thread(self, route, start, end)
+    pub fn exec(&mut self, route: &Route, start: usize) -> bool {
+        let end = self.bytes.len();
+        new_thread(self, route, MAIN_LINE_INDEX, start, end)
     }
 }
 
@@ -201,18 +197,12 @@ pub struct Captures<'a, 'b> {
 }
 
 impl<'a, 'b> Captures<'a, 'b> {
-    pub fn first(&self) -> Option<&Match> {
-        self.get(0)
-    }
-
     // the following methods are intended to
     // be compatible with the 'Captures' API of crate 'regex':
     // https://docs.rs/regex/latest/regex/struct.Captures.html
 
     pub fn get(&self, index: usize) -> Option<&Match> {
-        // Option<Match> {
         self.matches.get(index)
-        // .map(|e| e.clone())
     }
 
     pub fn name(&self, name: &str) -> Option<&Match> {
@@ -221,7 +211,6 @@ impl<'a, 'b> Captures<'a, 'b> {
             Some(s) => s == name,
             None => false,
         })
-        // .map(|e| e.clone())
     }
 
     // e.g.
@@ -231,15 +220,41 @@ impl<'a, 'b> Captures<'a, 'b> {
     //   let (whole, [one, two, three]) = c.extract();
     // ```
     pub fn extract<const N: usize>(&self) -> (&str, [&str; N]) {
-        let mut ss: [&str; N] = [""; N];
-        for idx in 0..N {
-            ss[idx] = self.matches[idx + 1].value;
+        let mut items: [&str; N] = [""; N];
+        for (idx, item) in items.iter_mut().enumerate() {
+            *item = self.matches[idx + 1].value;
         }
-        (self.matches[0].value, ss)
+        (self.matches[0].value, items)
     }
 
     pub fn len(&self) -> usize {
         self.matches.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl<'a, 'b> Index<usize> for Captures<'a, 'b> {
+    type Output = str;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.get(index)
+            .unwrap_or_else(|| panic!(
+                "Index {} is out of range of the capture group and the length of capture groups is {}.",
+                index, self.len()))
+            .as_str()
+    }
+}
+
+impl<'a, 'b> Index<&str> for Captures<'a, 'b> {
+    type Output = str;
+
+    fn index(&self, name: &str) -> &Self::Output {
+        self.name(name)
+            .unwrap_or_else(|| panic!("Cannot find the capture group named \"{}\".", name))
+            .as_str()
     }
 }
 
@@ -301,23 +316,27 @@ fn sub_string(bytes: &[u8], start: usize, end_excluded: usize) -> &str {
      * `let s = String::from_iter(&chars)`
      */
     let slice = &bytes[start..end_excluded];
-    str::from_utf8(slice).unwrap()
+    core::str::from_utf8(slice).unwrap()
 }
 
-fn start_main_thread(instance: &mut Instance, route: &Route, mut start: usize, end: usize) -> bool {
-    // allocate the vector of 'capture positions'
-    let number_of_capture_groups = route.capture_groups.len();
-    let main_thread = Thread::new(start, end, MAIN_LINE_INDEX);
+pub fn new_thread(
+    instance: &mut Instance,
+    route: &Route,
+    line_index: usize,
+    mut start: usize,
+    end: usize,
+) -> bool {
+    let thread = Thread::new(start, end, line_index);
+    instance.threads.push(thread);
 
-    instance.threads = vec![main_thread];
-    instance.match_ranges = vec![MatchRange::default(); number_of_capture_groups];
-
+    let mut result = false;
     while start < end {
-        if start_thread(instance, route, start) {
-            return true;
+        if run_thread(instance, route, start) {
+            result = true;
+            break;
         }
 
-        if route.lines[MAIN_LINE_INDEX].fixed_start {
+        if route.lines[line_index].fixed_start_position {
             break;
         }
 
@@ -326,10 +345,11 @@ fn start_main_thread(instance: &mut Instance, route: &Route, mut start: usize, e
         start += byte_length;
     }
 
-    false
+    instance.threads.pop();
+    result
 }
 
-fn start_thread(instance: &mut Instance, route: &Route, position: usize) -> bool {
+fn run_thread(instance: &mut Instance, route: &Route, position: usize) -> bool {
     let (line_index, entry_node_index, exit_node_index) = {
         let thread = instance.get_current_thread_ref();
         let line_index = thread.line_index;
@@ -337,16 +357,11 @@ fn start_thread(instance: &mut Instance, route: &Route, position: usize) -> bool
         (line_index, line.start_node_index, line.end_node_index)
     };
 
-    // DEBUG::
-    println!(
-        ">>THREAD START, line: {}, entry node: {}, position: {}",
-        line_index, entry_node_index, position
-    );
-
     // add transitions of the entry node
     instance.append_transition_stack_frames_by_node(route, entry_node_index, position, 0);
 
-    // take the last task
+    let mut result = false;
+
     while let Some(frame) = instance.get_current_thread_ref_mut().transition_stack.pop() {
         // get the transition
         let line = &route.lines[line_index];
@@ -358,27 +373,12 @@ fn start_thread(instance: &mut Instance, route: &Route, position: usize) -> bool
         let transition = &transition_item.transition;
         let target_node_index = transition_item.target_node_index;
 
-        // DEBUG::
-        println!(
-            "> node: {}, position: {}, rep count: {}",
-            frame.current_node_index, position, last_repetition_count
-        );
-
-        let check_result = transition.check(instance, position, last_repetition_count);
+        let check_result = transition.check(instance, route, position, last_repetition_count);
         match check_result {
             CheckResult::Success(move_forward, current_repetition_count) => {
-                // DEBUG::
-                println!(
-                    "  trans: {}, forward: {}, rep count: {} -> node: {}",
-                    transition, move_forward, current_repetition_count, target_node_index
-                );
-
                 if target_node_index == exit_node_index {
-                    println!(
-                        "  THREAD FINISH, line: {}, node: {}",
-                        line_index, exit_node_index
-                    );
-                    return true;
+                    result = true;
+                    break;
                 }
 
                 instance.append_transition_stack_frames_by_node(
@@ -389,16 +389,12 @@ fn start_thread(instance: &mut Instance, route: &Route, position: usize) -> bool
                 );
             }
             CheckResult::Failure => {
-                // DEBUG::
-                println!("  trans: {}, failed", transition);
+                // check next transition
             }
         }
     }
 
-    // DEBUG::
-    println!("  THREAD FAILED, line: {}", line_index);
-
-    false
+    result
 }
 
 #[cfg(test)]
@@ -1244,7 +1240,7 @@ mod tests {
 
             assert_eq!(
                 matches.next(),
-                Some(new_captures(&vec![
+                Some(new_captures(&[
                     (3, 7, None, "0x23"),
                     (3, 5, None, "0x"),
                     (5, 7, None, "23")
@@ -1253,7 +1249,7 @@ mod tests {
 
             assert_eq!(
                 matches.next(),
-                Some(new_captures(&vec![
+                Some(new_captures(&[
                     (10, 15, None, "0o456"),
                     (10, 12, None, "0o"),
                     (12, 15, None, "456")
@@ -1273,7 +1269,7 @@ mod tests {
 
             assert_eq!(
                 matches.next(),
-                Some(new_captures(&vec![
+                Some(new_captures(&[
                     (3, 7, None, "0x23"),
                     (3, 5, Some("prefix"), "0x"),
                     (5, 7, Some("number"), "23")
@@ -1282,7 +1278,7 @@ mod tests {
 
             assert_eq!(
                 matches.next(),
-                Some(new_captures(&vec![
+                Some(new_captures(&[
                     (10, 15, None, "0o456"),
                     (10, 12, Some("prefix"), "0o"),
                     (12, 15, Some("number"), "456")
@@ -1303,13 +1299,25 @@ mod tests {
 
             assert_eq!(one.len(), 3);
 
+            // test 'Captures::get'
             assert_eq!(one.get(0).unwrap().as_str(), "0x23");
             assert_eq!(one.get(1).unwrap().as_str(), "0x");
             assert_eq!(one.get(2).unwrap().as_str(), "23");
 
+            // test Captures number index trait
+            assert_eq!(&one[0], "0x23");
+            assert_eq!(&one[1], "0x");
+            assert_eq!(&one[2], "23");
+
+            // test 'Captures::name'
             assert_eq!(one.name("prefix").unwrap().as_str(), "0x");
             assert_eq!(one.name("number").unwrap().as_str(), "23");
 
+            // test Captures str index trait
+            assert_eq!(&one["prefix"], "0x");
+            assert_eq!(&one["number"], "23");
+
+            // test 'Captures::extract()'
             assert_eq!(("0x23", ["0x", "23"]), one.extract());
         }
 
@@ -1349,7 +1357,7 @@ mod tests {
 
             assert_eq!(
                 matches.next(),
-                Some(new_captures(&vec![
+                Some(new_captures(&[
                     (4, 37, None, "<div>one<div>two</div>three</div>"),
                     (5, 8, Some("tag"), "div")
                 ]))
@@ -1371,11 +1379,115 @@ mod tests {
 
             assert_eq!(
                 matches.next(),
-                Some(new_captures(&vec![
+                Some(new_captures(&[
                     (4, 26, None, "<div>one<div>two</div>"),
                     (5, 8, Some("tag"), "div")
                 ]))
             );
+        }
+    }
+
+    #[test]
+    fn test_process_lookbehind() {
+        {
+            let re = Regex::from_anreg("char_digit.is_after(['a'..'f'])").unwrap();
+            let text = "a1 22 f9 cc z3 b2";
+            let mut matches = re.find_iter(text);
+
+            assert_eq!(matches.next(), Some(new_match(1, 2, "1")));
+            assert_eq!(matches.next(), Some(new_match(7, 8, "9")));
+            assert_eq!(matches.next(), Some(new_match(16, 17, "2")));
+            assert_eq!(matches.next(), None);
+        }
+
+        {
+            let re = Regex::from_anreg(
+                r#"
+            [char_digit, 'a'..'f']
+                .repeat(2)
+                .is_after("0x")
+            "#,
+            )
+            .unwrap();
+            let text = "13 0x17 0o19 0x23 29";
+            let mut matches = re.find_iter(text);
+
+            assert_eq!(matches.next(), Some(new_match(5, 7, "17")));
+            assert_eq!(matches.next(), Some(new_match(15, 17, "23")));
+            assert_eq!(matches.next(), None);
+        }
+
+        // negative
+        {
+            let re = Regex::from_anreg(
+                r#"
+            [char_digit, 'a'..'f']
+                .repeat(2)
+                .is_not_after("0x")
+            "#,
+            )
+            .unwrap();
+            let text = "13 0x17 0o19 0x23 29";
+            let mut matches = re.find_iter(text);
+
+            assert_eq!(matches.next(), Some(new_match(0, 2, "13")));
+            assert_eq!(matches.next(), Some(new_match(10, 12, "19")));
+            assert_eq!(matches.next(), Some(new_match(18, 20, "29")));
+            assert_eq!(matches.next(), None);
+        }
+    }
+
+    #[test]
+    fn test_process_lookahead() {
+        {
+            let re = Regex::from_anreg("is_bound, ['a'..'f'].is_before(char_digit)").unwrap();
+            let text = "a1 22 f9 cc z3 b2";
+            let mut matches = re.find_iter(text);
+
+            assert_eq!(matches.next(), Some(new_match(0, 1, "a")));
+            assert_eq!(matches.next(), Some(new_match(6, 7, "f")));
+            assert_eq!(matches.next(), Some(new_match(15, 16, "b")));
+            assert_eq!(matches.next(), None);
+        }
+
+        {
+            let re = Regex::from_anreg(
+                r#"
+                is_bound
+                ['a'..'z']
+                    .at_least(2)
+                    .is_before("ing" || "ed")
+                "#,
+            )
+            .unwrap();
+            let text = "jump jumping aaaabbbbing want wanted play";
+            let mut matches = re.find_iter(text);
+
+            assert_eq!(matches.next(), Some(new_match(5, 9, "jump")));
+            assert_eq!(matches.next(), Some(new_match(13, 21, "aaaabbbb")));
+            assert_eq!(matches.next(), Some(new_match(30, 34, "want")));
+            assert_eq!(matches.next(), None);
+        }
+
+        // negative
+        {
+            let re = Regex::from_anreg(
+                r#"
+                is_bound
+                ['a'..'z']
+                    .repeat(4)
+                    .is_not_before("ing" || "ed")
+                "#,
+            )
+            .unwrap();
+            let text = "jump jumping aaaabbbbing want wanted play";
+            let mut matches = re.find_iter(text);
+
+            assert_eq!(matches.next(), Some(new_match(0, 4, "jump")));
+            assert_eq!(matches.next(), Some(new_match(13, 17, "aaaa")));
+            assert_eq!(matches.next(), Some(new_match(25, 29, "want")));
+            assert_eq!(matches.next(), Some(new_match(37, 41, "play")));
+            assert_eq!(matches.next(), None);
         }
     }
 }

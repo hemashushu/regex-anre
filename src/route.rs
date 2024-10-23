@@ -22,34 +22,39 @@ pub const MAIN_LINE_INDEX: usize = 0;
 // |-- line
 
 // the compile target
+#[derive(Debug)]
 pub struct Route {
     pub lines: Vec<Line>,
     pub capture_groups: Vec<CaptureGroup>,
 }
 
+#[derive(Debug)]
 pub struct Line {
     pub nodes: Vec<Node>,
     pub start_node_index: usize,
     pub end_node_index: usize,
 
-    // it is true when the expression starts with `^`, or encounters is_after and is_before
-    pub fixed_start: bool,
-
-    // it is true when the expression ends with `$`, or encounters is_after
-    pub fixed_end: bool,
+    // it is true when the expression starts with `^`,
+    // or encounters is_after and is_before sub-thread.
+    // it's used to optimise efficiency by directly exiting
+    // the thread looop when a thread fails.
+    pub fixed_start_position: bool,
 }
 
 // every node has one or more transitions,
 // except the exit node has no transition.
+#[derive(Debug)]
 pub struct Node {
     pub transition_items: Vec<TransitionItem>,
 }
 
+#[derive(Debug)]
 pub struct TransitionItem {
     pub transition: Transition,   // the type of transition
     pub target_node_index: usize, // the index of next node
 }
 
+#[derive(Debug)]
 pub struct CaptureGroup {
     pub name: Option<String>,
 }
@@ -67,8 +72,7 @@ impl Route {
             nodes: vec![],
             start_node_index: 0,
             end_node_index: 0,
-            fixed_start: false,
-            fixed_end: false,
+            fixed_start_position: false,
         };
 
         let idx = self.lines.len();

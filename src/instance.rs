@@ -14,8 +14,8 @@ pub struct Instance<'a> {
 }
 
 pub struct Thread {
-    pub start_position: usize,                       // poisition included
-    pub end_position: usize,                         // position excluded
+    pub start_position: usize,                       // poisition included. (in byte)
+    pub end_position: usize,                         // position excluded. (in byte)
     pub line_index: usize,                           //
     pub transition_stack: Vec<TransitionStackFrame>, //
 }
@@ -32,9 +32,9 @@ impl Thread {
 }
 
 pub struct TransitionStackFrame {
-    pub position: usize,           // the current position
+    pub position: usize,           // the current position. (in byte)
     pub repetition_count: usize,   // for backtracking
-    pub current_node_index: usize, // the current node index
+    pub current_node_index: usize, // the index of node which holds the transitions
     pub transition_index: usize,   // target transition index
 }
 
@@ -122,17 +122,19 @@ impl MatchRange {
 }
 
 impl<'a> Instance<'a> {
-    pub fn new(s: &'a str) -> Self {
+    pub fn new(s: &'a str, number_of_capture_groups:usize) -> Self {
         let bytes = s.as_bytes();
-        Self::from_bytes(bytes)
+        Self::from_bytes(bytes, number_of_capture_groups)
     }
 
-    pub fn from_bytes(bytes: &'a [u8]) -> Self {
+    pub fn from_bytes(bytes: &'a [u8], number_of_capture_groups:usize) -> Self {
         Instance {
             bytes,
             threads: vec![],
-            match_ranges: vec![],
             counter_stack: vec![],
+
+            // allocate the vector of 'match ranges' for the capture groups
+            match_ranges: vec![MatchRange::default(); number_of_capture_groups],
         }
     }
 

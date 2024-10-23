@@ -4,6 +4,8 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+pub const LEXER_PEEK_CHAR_MAX_COUNT: usize = 2;
+
 use crate::{
     charposition::{CharWithPosition, CharsWithPositionIter},
     error::Error,
@@ -15,7 +17,8 @@ use crate::{
 pub fn lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, Error> {
     let mut chars = s.chars();
     let mut char_position_iter = CharsWithPositionIter::new(0, &mut chars);
-    let mut peekable_char_position_iter = PeekableIter::new(&mut char_position_iter, 3);
+    let mut peekable_char_position_iter =
+        PeekableIter::new(&mut char_position_iter, LEXER_PEEK_CHAR_MAX_COUNT);
     let mut lexer = Lexer::new(&mut peekable_char_position_iter);
     lexer.lex()
 }

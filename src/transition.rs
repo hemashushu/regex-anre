@@ -9,9 +9,12 @@ use std::fmt::Display;
 use crate::{
     ast::AssertionName,
     instance::{Instance, MatchRange},
-    utf8reader::read_char,
+    process::new_thread,
+    route::Route,
+    utf8reader::{read_char, read_previous_char},
 };
 
+#[derive(Debug)]
 pub enum Transition {
     Jump(JumpTransition),
     Char(CharTransition),
@@ -37,76 +40,93 @@ pub enum Transition {
     LookBehindAssertion(LookBehindAssertionTransition),
 }
 
-// Jump
+#[derive(Debug)]
 pub struct JumpTransition;
 
+#[derive(Debug)]
 pub struct CharTransition {
     pub codepoint: u32,
     pub byte_length: usize,
 }
 
 // There is only `char_any` currently
+#[derive(Debug)]
 pub struct SpecialCharTransition;
 
+#[derive(Debug)]
 pub struct StringTransition {
     pub codepoints: Vec<u32>,
     pub byte_length: usize,
 }
 
+#[derive(Debug)]
 pub struct CharSetTransition {
     pub items: Vec<CharSetItem>,
     pub negative: bool,
 }
 
+#[derive(Debug)]
 pub enum CharSetItem {
     Char(u32),
     Range(CharRange),
 }
 
+#[derive(Debug)]
 pub struct CharRange {
     pub start: u32,
     pub end_included: u32,
 }
 
+#[derive(Debug)]
 pub struct BackReferenceTransition {
     pub capture_group_index: usize,
 }
 
+#[derive(Debug)]
 pub struct AssertionTransition {
     pub name: AssertionName,
 }
 
+#[derive(Debug)]
 pub struct CaptureStartTransition {
     pub capture_group_index: usize,
 }
 
+#[derive(Debug)]
 pub struct CaptureEndTransition {
     pub capture_group_index: usize,
 }
 
+#[derive(Debug)]
 pub struct CounterResetTransition;
 
+#[derive(Debug)]
 pub struct CounterSaveTransition;
 
+#[derive(Debug)]
 pub struct CounterIncTransition;
 
+#[derive(Debug)]
 pub struct CounterCheckTransition {
     pub repetition_type: RepetitionType,
 }
 
+#[derive(Debug)]
 pub struct RepetitionTransition {
     pub repetition_type: RepetitionType,
 }
 
+#[derive(Debug)]
 pub struct LookAheadAssertionTransition {
     pub line_index: usize,
     pub negative: bool,
 }
 
+#[derive(Debug)]
 pub struct LookBehindAssertionTransition {
     pub line_index: usize,
     pub negative: bool,
-    pub pattern_chars_length: usize,
+    pub match_length_in_char: usize,
 }
 
 impl CharTransition {
@@ -123,7 +143,10 @@ impl StringTransition {
     pub fn new(s: &str) -> Self {
         let chars: Vec<u32> = s.chars().map(|item| item as u32).collect();
         let byte_length = s.as_bytes().len();
-        StringTransition { codepoints: chars, byte_length }
+        StringTransition {
+            codepoints: chars,
+            byte_length,
+        }
     }
 }
 
@@ -253,17 +276,13 @@ pub enum RepetitionType {
 
 impl CounterCheckTransition {
     pub fn new(repetition_type: RepetitionType) -> Self {
-        CounterCheckTransition {
-            repetition_type,
-        }
+        CounterCheckTransition { repetition_type }
     }
 }
 
 impl RepetitionTransition {
     pub fn new(repetition_type: RepetitionType) -> Self {
-        RepetitionTransition {
-            repetition_type,
-        }
+        RepetitionTransition { repetition_type }
     }
 }
 
@@ -277,11 +296,11 @@ impl LookAheadAssertionTransition {
 }
 
 impl LookBehindAssertionTransition {
-    pub fn new(line_index: usize, negative: bool, pattern_chars_length: usize) -> Self {
+    pub fn new(line_index: usize, negative: bool, match_length_in_char: usize) -> Self {
         LookBehindAssertionTransition {
             line_index,
             negative,
-            pattern_chars_length,
+            match_length_in_char,
         }
     }
 }
@@ -317,7 +336,6 @@ impl Display for JumpTransition {
 
 impl Display for CharTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // let (codepoint, _) = utf8reader::read_char(&self.bytes, 0);
         let c = unsafe { char::from_u32_unchecked(self.codepoint) };
         write!(f, "Char '{}'", c)
     }
@@ -337,8 +355,6 @@ impl Display for StringTransition {
          * or
          * `let s = String::from_iter(&chars)`
          */
-        // let data = self.bytes.clone();
-        // write!(f, "String \"{}\"", String::from_utf8(data).unwrap())
         let cs: Vec<char> = self
             .codepoints
             .iter()
@@ -355,7 +371,6 @@ impl Display for CharSetTransition {
         for item in &self.items {
             let line = match item {
                 CharSetItem::Char(codepoint) => {
-                    // let (codepoint, _) = utf8reader::read_char(bytes, 0);
                     let c = unsafe { char::from_u32_unchecked(*codepoint) };
                     match c {
                         '\t' => "'\\t'".to_owned(),
@@ -408,7 +423,6 @@ impl Display for CaptureEndTransition {
 
 impl Display for CounterResetTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // write!(f, "Counter reset %{}", self.counter_index)
         f.write_str("Counter reset")
     }
 }
@@ -421,7 +435,6 @@ impl Display for CounterSaveTransition {
 
 impl Display for CounterIncTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // write!(f, "Counter inc %{}", self.counter_index)
         f.write_str("Counter inc")
     }
 }
@@ -430,9 +443,7 @@ impl Display for CounterCheckTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            // "Counter check %{}, {}",
             "Counter check {}",
-            // self.counter_index,
             self.repetition_type
         )
     }
@@ -442,9 +453,7 @@ impl Display for RepetitionTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            // "Repetition %{}, {}",
             "Repetition {}",
-            // self.counter_index,
             self.repetition_type
         )
     }
@@ -480,14 +489,14 @@ impl Display for LookBehindAssertionTransition {
         if self.negative {
             write!(
                 f,
-                "Look behind negative ${}, pattern length {}",
-                self.line_index, self.pattern_chars_length
+                "Look behind negative ${}, match length {}",
+                self.line_index, self.match_length_in_char
             )
         } else {
             write!(
                 f,
-                "Look behind ${}, pattern length {}",
-                self.line_index, self.pattern_chars_length
+                "Look behind ${}, match length {}",
+                self.line_index, self.match_length_in_char
             )
         }
     }
@@ -497,12 +506,13 @@ impl Transition {
     pub fn check(
         &self,
         instance: &mut Instance,
+        route: &Route,
         position: usize,
         repetition_count: usize,
     ) -> CheckResult {
         match self {
             Transition::Jump(_) => {
-                // always success
+                // jumping transition always success
                 CheckResult::Success(0, 0)
             }
             Transition::Char(transition) => {
@@ -530,7 +540,7 @@ impl Transition {
                 if position >= thread.end_position {
                     CheckResult::Failure
                 } else {
-                    let (current_char, byte_length) = get_char(instance, position);
+                    let (current_char, byte_length) = get_char(instance.bytes, position);
                     if current_char != '\n' as u32 && current_char != '\r' as u32 {
                         CheckResult::Success(byte_length, 0)
                     } else {
@@ -570,7 +580,7 @@ impl Transition {
                     return CheckResult::Failure;
                 }
 
-                let (current_char, byte_length) = get_char(instance, position);
+                let (current_char, byte_length) = get_char(instance.bytes, position);
                 let mut found: bool = false;
 
                 for item in &transition.items {
@@ -621,11 +631,12 @@ impl Transition {
                 }
             }
             Transition::Assertion(transition) => {
+                let bytes = instance.bytes;
                 let success = match transition.name {
-                    AssertionName::Start => is_first_char(instance, position),
-                    AssertionName::End => is_end(instance, position),
-                    AssertionName::IsBound => is_word_bound(instance, position),
-                    AssertionName::IsNotBound => !is_word_bound(instance, position),
+                    AssertionName::Start => is_first_char(position),
+                    AssertionName::End => is_end(bytes, position),
+                    AssertionName::IsBound => is_word_bound(bytes, position),
+                    AssertionName::IsNotBound => !is_word_bound(bytes, position),
                 };
 
                 if success {
@@ -642,9 +653,7 @@ impl Transition {
                 instance.match_ranges[transition.capture_group_index].end = position;
                 CheckResult::Success(0, 0)
             }
-            Transition::CounterReset(_) => {
-                CheckResult::Success(0, 0)
-            }
+            Transition::CounterReset(_) => CheckResult::Success(0, 0),
             Transition::CounterSave(_) => {
                 instance.counter_stack.push(repetition_count);
                 CheckResult::Success(0, 0)
@@ -677,40 +686,92 @@ impl Transition {
                     CheckResult::Failure
                 }
             }
-            Transition::LookAheadAssertion(_transition) => todo!(),
-            Transition::LookBehindAssertion(_transition) => todo!(),
+            Transition::LookAheadAssertion(transition) => {
+                let line_index = transition.line_index;
+                let thread_result =
+                    new_thread(instance, route, line_index, position, instance.bytes.len());
+
+                let result = thread_result ^ transition.negative;
+                if result {
+                    // assertion should not move the position of parent thread
+                    const NO_FORWARD: usize = 0;
+                    CheckResult::Success(NO_FORWARD, 0)
+                } else {
+                    CheckResult::Failure
+                }
+            }
+            Transition::LookBehindAssertion(transition) => {
+                let line_index = transition.line_index;
+                let thread_result = if let Ok(start) = get_position_by_chars_backward(
+                    instance.bytes,
+                    position,
+                    transition.match_length_in_char,
+                ) {
+                    // the child thread should start at position "current_position - backword_count_in_bytes".
+                    new_thread(instance, route, line_index, start, instance.bytes.len())
+                } else {
+                    false
+                };
+
+                let result = thread_result ^ transition.negative;
+                if result {
+                    // assertion should not move the position of parent thread
+                    const NO_FORWARD: usize = 0;
+                    CheckResult::Success(NO_FORWARD, 0)
+                } else {
+                    CheckResult::Failure
+                }
+            }
         }
     }
 }
 
-#[inline]
-fn get_char(instance: &Instance, position: usize) -> (u32, usize) {
-    read_char(instance.bytes, position)
+// return Err if the position it less than 0
+fn get_position_by_chars_backward(
+    bytes: &[u8],
+    mut current_position: usize,
+    backward_chars: usize,
+) -> Result<usize, ()> {
+    for _ in 0..backward_chars {
+        if current_position == 0 {
+            return Err(());
+        }
+
+        let (_, char_length_in_byte) = read_previous_char(bytes, current_position);
+        current_position -= char_length_in_byte;
+    }
+
+    Ok(current_position)
 }
 
 #[inline]
-fn is_first_char(_instance: &Instance, position: usize) -> bool {
+fn get_char(bytes: &[u8], position: usize) -> (u32, usize) {
+    read_char(bytes, position)
+}
+
+#[inline]
+fn is_first_char(position: usize) -> bool {
     position == 0
 }
 
 #[inline]
-fn is_end(instance: &Instance, position: usize) -> bool {
-    let total_byte_length = instance.bytes.len();
+fn is_end(bytes: &[u8], position: usize) -> bool {
+    let total_byte_length = bytes.len();
     position >= total_byte_length
 }
 
-fn is_word_bound(instance: &Instance, position: usize) -> bool {
-    if instance.bytes.is_empty() {
+fn is_word_bound(bytes: &[u8], position: usize) -> bool {
+    if bytes.is_empty() {
         false
     } else if position == 0 {
-        let (current_char, _) = get_char(instance, position);
+        let (current_char, _) = get_char(bytes, position);
         is_word_char(current_char)
-    } else if position >= instance.bytes.len() {
-        let (previous_char, _) = get_char(instance, position - 1);
+    } else if position >= bytes.len() {
+        let (previous_char, _) = get_char(bytes, position - 1);
         is_word_char(previous_char)
     } else {
-        let (current_char, _) = get_char(instance, position);
-        let (previous_char, _) = get_char(instance, position - 1);
+        let (current_char, _) = get_char(bytes, position);
+        let (previous_char, _) = get_char(bytes, position - 1);
 
         if is_word_char(current_char) {
             !is_word_char(previous_char)

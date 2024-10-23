@@ -12,6 +12,7 @@ use crate::{
     error::Error,
     parser::parse_from_str,
     route::{Line, Route},
+    rulechecker::{get_match_length, MatchLength},
     transition::{
         add_char, add_preset_digit, add_preset_space, add_preset_word, add_range,
         AssertionTransition, BackReferenceTransition, CaptureEndTransition, CaptureStartTransition,
@@ -73,36 +74,32 @@ impl<'a> Compiler<'a> {
 
         let expressions = &program.expressions;
 
-        let mut fixed_start = false;
-        let mut fixed_end = false;
+        let mut fixed_start_position = false;
         let mut ports = vec![];
 
         for (expression_index, expression) in expressions.iter().enumerate() {
             if matches!(expression, Expression::Assertion(AssertionName::Start)) {
-                if expression_index == 0 {
-                    // skips the 'start' assertion emitting.
-                    fixed_start = true;
-                } else {
+                if expression_index != 0 {
                     return Err(Error::Message(
                         "The assertion \"start\" can only be present at the beginning of expression."
                             .to_owned(),
                     ));
                 }
-            }
 
-            if matches!(expression, Expression::Assertion(AssertionName::End)) {
-                if expression_index == expressions.len() - 1 {
-                    // skips the 'end' assertion emitting.
-                    fixed_end = true;
-                } else {
+                fixed_start_position = true;
+                ports.push(self.emit_border_assertion(&AssertionName::Start)?);
+            } else if matches!(expression, Expression::Assertion(AssertionName::End)) {
+                if expression_index != expressions.len() - 1 {
                     return Err(Error::Message(
                         "The assertion \"end\" can only be present at the end of expression."
                             .to_owned(),
                     ));
                 }
-            }
 
-            ports.push(self.emit_expression(expression)?);
+                ports.push(self.emit_border_assertion(&AssertionName::End)?);
+            } else {
+                ports.push(self.emit_expression(expression)?);
+            }
         }
 
         let program_port = if ports.is_empty() {
@@ -151,11 +148,10 @@ impl<'a> Compiler<'a> {
             Transition::CaptureEnd(capture_end_transition),
         );
 
-        // save the program ports
+        // update the program ports and properties
         line.start_node_index = in_node_index;
         line.end_node_index = out_node_index;
-        line.fixed_start = fixed_start;
-        line.fixed_end = fixed_end;
+        line.fixed_start_position = fixed_start_position;
 
         Ok(())
     }
@@ -164,7 +160,7 @@ impl<'a> Compiler<'a> {
         let result = match expression {
             Expression::Literal(literal) => self.emit_literal(literal)?,
             Expression::Identifier(identifier) => self.emit_backreference(identifier)?,
-            Expression::Assertion(name) => self.emit_assertion(name)?,
+            Expression::Assertion(name) => self.emit_boundary_assertion(name)?,
             Expression::Group(expressions) => self.emit_group(expressions)?,
             Expression::FunctionCall(function_call) => self.emit_function_call(function_call)?,
             Expression::Or(left, right) => self.emit_logic_or(left, right)?,
@@ -505,7 +501,22 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_assertion(&mut self, name: &AssertionName) -> Result<Port, Error> {
+    fn emit_boundary_assertion(&mut self, name: &AssertionName) -> Result<Port, Error> {
+        if matches!(name, AssertionName::Start | AssertionName::End) {
+            return Err(Error::Message("The assertion \"start\" and \"end\" can only exist at the beginning or end of an expression.".to_owned()));
+        }
+
+        let line = self.get_current_line_ref_mut();
+        let in_node_index = line.new_node();
+        let out_node_index = line.new_node();
+        let transition = Transition::Assertion(AssertionTransition::new(*name));
+
+        line.append_transition(in_node_index, out_node_index, transition);
+        Ok(Port::new(in_node_index, out_node_index))
+    }
+
+    fn emit_border_assertion(&mut self, name: &AssertionName) -> Result<Port, Error> {
+        assert!(matches!(name, AssertionName::Start | AssertionName::End));
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -803,8 +814,7 @@ impl<'a> Compiler<'a> {
             // save the sub-program ports
             sub_line.start_node_index = sub_port.in_node_index;
             sub_line.end_node_index = sub_port.out_node_index;
-            sub_line.fixed_start = true;
-            sub_line.fixed_end = false;
+            sub_line.fixed_start_position = true;
         }
 
         // restore to the previous line
@@ -835,7 +845,7 @@ impl<'a> Compiler<'a> {
     fn emit_lookbehind_assertion(
         &mut self,
         current_expression: &Expression,
-        next_expression: &Expression,
+        previous_expression: &Expression,
         negative: bool,
     ) -> Result<Port, Error> {
         // * is_after(A, B), A.is_after(B), (?<=B)A
@@ -854,20 +864,24 @@ impl<'a> Compiler<'a> {
         // 3. switch to the new line
         self.current_line_index = sub_line_index;
 
-        let pattern_chars_length = {
-            // calculate the total length of patterns
-            let pattern_length = 0_usize; // calculate_pattern_length(next_expression);
+        let match_length_in_char = {
+            // calculate the total length (in char) of patterns
+            let enum_length = get_match_length(previous_expression);
+            let length = if let MatchLength::Fixed(val) = enum_length {
+                val
+            } else {
+                return Err(Error::Message("Look behind assertion (is_after, is_not_after) requires a fixed length pattern.".to_owned()));
+            };
 
-            let sub_port = self.emit_expression(next_expression)?;
+            let sub_port = self.emit_expression(previous_expression)?;
             let sub_line = self.get_current_line_ref_mut();
 
             // save the sub-program ports
             sub_line.start_node_index = sub_port.in_node_index;
             sub_line.end_node_index = sub_port.out_node_index;
-            sub_line.fixed_start = true;
-            sub_line.fixed_end = true;
+            sub_line.fixed_start_position = true;
 
-            pattern_length
+            length
         };
 
         // restore to the previous line
@@ -884,7 +898,7 @@ impl<'a> Compiler<'a> {
             Transition::LookBehindAssertion(LookBehindAssertionTransition::new(
                 sub_line_index,
                 negative,
-                pattern_chars_length,
+                match_length_in_char,
             )),
         );
 
@@ -1519,9 +1533,8 @@ define(letter, ['a'..'f', char_space])
 # {0}"
             );
 
-            // check the 'fixed_start' and 'fixed_end'
-            assert!(route.lines[MAIN_LINE_INDEX].fixed_start);
-            assert!(!route.lines[MAIN_LINE_INDEX].fixed_end);
+            // check the 'fixed_start_position' property
+            assert!(route.lines[MAIN_LINE_INDEX].fixed_start_position);
         }
 
         {
@@ -1549,9 +1562,8 @@ define(letter, ['a'..'f', char_space])
 # {0}"
             );
 
-            // check the 'fixed_start' and 'fixed_end'
-            assert!(!route.lines[MAIN_LINE_INDEX].fixed_start);
-            assert!(route.lines[MAIN_LINE_INDEX].fixed_end);
+            // check the 'fixed_start_position' property
+            assert!(!route.lines[MAIN_LINE_INDEX].fixed_start_position);
         }
 
         // err: assert "start" can only be present at the beginning of expression
@@ -2352,7 +2364,7 @@ define(letter, ['a'..'f', char_space])
     fn test_compile_is_before() {
         // positive
         {
-            let route = compile_from_str(r#"'a'.is_before('b')"#).unwrap();
+            let route = compile_from_str(r#"'a'.is_before("xyz")"#).unwrap();
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2372,7 +2384,7 @@ define(letter, ['a'..'f', char_space])
 < 5
 = $1
 > 0
-  -> 1, Char 'b'
+  -> 1, String \"xyz\"
 < 1
 # {0}"
             );
@@ -2380,7 +2392,7 @@ define(letter, ['a'..'f', char_space])
 
         // negative
         {
-            let route = compile_from_str(r#"'a'.is_not_before('b')"#).unwrap();
+            let route = compile_from_str(r#"'a'.is_not_before("xyz")"#).unwrap();
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2400,7 +2412,7 @@ define(letter, ['a'..'f', char_space])
 < 5
 = $1
 > 0
-  -> 1, Char 'b'
+  -> 1, String \"xyz\"
 < 1
 # {0}"
             );
@@ -2411,7 +2423,7 @@ define(letter, ['a'..'f', char_space])
     fn test_compile_is_after() {
         // positive
         {
-            let route = compile_from_str(r#"'a'.is_after('b')"#).unwrap();
+            let route = compile_from_str(r#"'a'.is_after("xyz")"#).unwrap();
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2423,7 +2435,7 @@ define(letter, ['a'..'f', char_space])
 - 1
   -> 3, Jump
 - 2
-  -> 0, Look behind $1, pattern length 0
+  -> 0, Look behind $1, match length 3
 - 3
   -> 5, Capture end {0}
 > 4
@@ -2431,7 +2443,7 @@ define(letter, ['a'..'f', char_space])
 < 5
 = $1
 > 0
-  -> 1, Char 'b'
+  -> 1, String \"xyz\"
 < 1
 # {0}"
             );
@@ -2439,7 +2451,7 @@ define(letter, ['a'..'f', char_space])
 
         // negative
         {
-            let route = compile_from_str(r#"'a'.is_not_after('b')"#).unwrap();
+            let route = compile_from_str(r#"'a'.is_not_after("xyz")"#).unwrap();
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2451,7 +2463,7 @@ define(letter, ['a'..'f', char_space])
 - 1
   -> 3, Jump
 - 2
-  -> 0, Look behind negative $1, pattern length 0
+  -> 0, Look behind negative $1, match length 3
 - 3
   -> 5, Capture end {0}
 > 4
@@ -2459,10 +2471,23 @@ define(letter, ['a'..'f', char_space])
 < 5
 = $1
 > 0
-  -> 1, Char 'b'
+  -> 1, String \"xyz\"
 < 1
 # {0}"
             );
+        }
+
+        // variable length
+        {
+            assert!(matches!(
+                compile_from_str(r#"'a'.is_after("x" || "yz")"#),
+                Err(Error::Message(_))
+            ));
+
+            assert!(matches!(
+                compile_from_str(r#"'a'.is_after("x"+)"#),
+                Err(Error::Message(_))
+            ));
         }
     }
 }

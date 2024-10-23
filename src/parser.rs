@@ -4,6 +4,8 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+pub const PARSER_PEEK_TOKEN_MAX_COUNT: usize = 4;
+
 use crate::{
     ast::{
         AssertionName, CharRange, CharSet, CharSetElement, Expression, FunctionCall,
@@ -350,6 +352,16 @@ impl<'a> Parser<'a> {
                         expression: Box::new(left),
                         args,
                     };
+                    left = Expression::FunctionCall(Box::new(function_call));
+                }
+                Token::NewLine
+                    if matches!(self.peek_token(1), Some(Token::Dot))
+                        && matches!(self.peek_token(2), Some(Token::Identifier(_)))
+                        && self.peek_token_and_equals(3, &Token::LeftParen) =>
+                {
+                    self.next_token(); // consume the new-line
+
+                    let function_call = self.continue_parse_rear_function_call(left)?;
                     left = Expression::FunctionCall(Box::new(function_call));
                 }
                 Token::Dot
@@ -937,7 +949,7 @@ pub fn parse_from_str(s: &str) -> Result<Program, Error> {
     let expanded_tokens = expand(normalized_tokens)?;
     let expanded_and_normalized_tokens = normalize(expanded_tokens);
     let mut token_iter = expanded_and_normalized_tokens.into_iter();
-    let mut peekable_token_iter = PeekableIter::new(&mut token_iter, 3);
+    let mut peekable_token_iter = PeekableIter::new(&mut token_iter, PARSER_PEEK_TOKEN_MAX_COUNT);
     let mut parser = Parser::new(&mut peekable_token_iter);
     parser.parse_program()
 }
@@ -1120,6 +1132,29 @@ is_after("bar", "foo" || 'f'{3})
             .to_string(),
             r#"is_after("bar", "foo" || repeat('f', 3))"#
         );
+
+        // nested
+        assert_eq!(
+            parse_from_str(r#"optional(one_or_more('a'))"#)
+                .unwrap()
+                .to_string(),
+            r#"optional(one_or_more('a'))"#
+        );
+
+        // nested + mulitline
+        assert_eq!(
+            parse_from_str(
+                r#"
+optional(
+    one_or_more(
+        'a'
+    )
+)"#
+            )
+            .unwrap()
+            .to_string(),
+            r#"optional(one_or_more('a'))"#
+        );
     }
 
     #[test]
@@ -1164,11 +1199,36 @@ at_least('c', 11)"#
             parse_from_str(
                 r#"
 "bar".is_after("foo" || 'f'{3})
-                "#,
+    "#,
             )
             .unwrap()
             .to_string(),
             r#"is_after("bar", "foo" || repeat('f', 3))"#
+        );
+
+        // chaining call
+        assert_eq!(
+            parse_from_str(
+                r#"
+['a'..'z'].repeat_range(2, 7).is_before("ing" || "ed")
+    "#
+            )
+            .unwrap()
+            .to_string(),
+            r#"is_before(repeat_range(['a'..'z'], 2, 7), "ing" || "ed")"#
+        );
+
+        assert_eq!(
+            parse_from_str(
+                r#"
+['a'..'z']
+    .repeat_range(2, 7)
+    .is_before("ing" || "ed")
+            "#,
+            )
+            .unwrap()
+            .to_string(),
+            r#"is_before(repeat_range(['a'..'z'], 2, 7), "ing" || "ed")"#
         );
     }
 
@@ -1294,11 +1354,6 @@ char_digit.one_or_more() || [char_word, '-']+
             .to_string(),
             r#"one_or_more(char_digit) || one_or_more([char_word, '-'])"#
         );
-    }
-
-    #[test]
-    fn test_parse_expression_identifier_and_status() {
-        // todo
     }
 
     #[test]
