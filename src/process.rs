@@ -1460,12 +1460,12 @@ mod tests {
                 "#,
             )
             .unwrap();
-            let text = "jump jumping aaaabbbbing want wanted play";
+            let text = "jump jumping aaaabbbbing push pushed fork";
             let mut matches = re.find_iter(text);
 
             assert_eq!(matches.next(), Some(new_match(5, 9, "jump")));
             assert_eq!(matches.next(), Some(new_match(13, 21, "aaaabbbb")));
-            assert_eq!(matches.next(), Some(new_match(30, 34, "want")));
+            assert_eq!(matches.next(), Some(new_match(30, 34, "push")));
             assert_eq!(matches.next(), None);
         }
 
@@ -1480,13 +1480,13 @@ mod tests {
                 "#,
             )
             .unwrap();
-            let text = "jump jumping aaaabbbbing want wanted play";
+            let text = "jump jumping aaaabbbbing push pushed fork";
             let mut matches = re.find_iter(text);
 
             assert_eq!(matches.next(), Some(new_match(0, 4, "jump")));
             assert_eq!(matches.next(), Some(new_match(13, 17, "aaaa")));
-            assert_eq!(matches.next(), Some(new_match(25, 29, "want")));
-            assert_eq!(matches.next(), Some(new_match(37, 41, "play")));
+            assert_eq!(matches.next(), Some(new_match(25, 29, "push")));
+            assert_eq!(matches.next(), Some(new_match(37, 41, "fork")));
             assert_eq!(matches.next(), None);
         }
     }

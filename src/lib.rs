@@ -14,11 +14,12 @@ mod instance;
 mod lexer;
 mod location;
 mod macroexpander;
-mod rulechecker;
 mod normalizer;
 mod parser;
 mod peekableiter;
+mod rulechecker;
 mod token;
+mod tradition;
 mod transition;
 mod utf8reader;
 

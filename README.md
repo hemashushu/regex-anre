@@ -1,12 +1,12 @@
-# ANREG
+# Regex - ANRE Edition
 
-_ANREG_ is a brand new regex language that offers all the capabilities of traditional regex but in much simpler form.
+_ANRE_ is a brand new regex language that offers all the capabilities of traditional regex but in much simpler form.
 
-Designed with user-friendliness in mind, _ANREG_ requires no prior knowledge to get started and can be seamlessly converted to and from traditional regex.
+Designed with user-friendliness in mind, _ANRE_ requires no prior knowledge to get started and can be seamlessly converted to and from traditional regex.
 
-(Note: ANREG is short for _XiaoXuan Regular Expression_)
+(Note: ANRE is short for _XiaoXuan Regular Expression_)
 
-[anreg-rs](https://github.com/hemashushu/anreg-rs) is a lightweight engine (interpreter) for ANREG.
+[regex-anre](https://github.com/hemashushu/regex-anre) is a lightweight engine (interpreter) for ANRE.
 
 <!-- @import "[TOC]" {cmd="toc" depthFrom=2 depthTo=4 orderedList=false} -->
 
@@ -16,16 +16,16 @@ Designed with user-friendliness in mind, _ANREG_ requires no prior knowledge to 
 - [Motivation](#motivation)
 - [Quick Start by Examples](#quick-start-by-examples)
 - [Comparison with Traditional Regex](#comparison-with-traditional-regex)
-- [The ANREG Language Reference](#the-anreg-language-reference)
-- [How the ANREG Engine Works](#how-the-anreg-engine-works)
-- [The `anreg-rs` Library](#the-anreg-rs-library)
+- [The ANRE Language Reference](#the-anre-language-reference)
+- [How the ANRE Engine Works](#how-the-anre-engine-works)
+- [The Library](#the-library)
 - [Resource](#resource)
 
 <!-- /code_chunk_output -->
 
 ## Getting Started in 30 Minutes
 
-_ANREG_ can be considered as a programming language that consists only of literals and functions, without variables and control flow. Its primary purpose is to search for strings within a large of text that match a specified pattern, or to valify whether a given text conforms to a particular pattern.
+_ANRE_ can be considered as a programming language that consists only of literals and functions, without variables and control flow. Its primary purpose is to search for strings within a large of text that match a specified pattern, or to valify whether a given text conforms to a particular pattern.
 
 ## Motivation
 
@@ -33,10 +33,10 @@ _ANREG_ can be considered as a programming language that consists only of litera
 
 ## Comparison with Traditional Regex
 
-## The ANREG Language Reference
+## The ANRE Language Reference
 
-## How the ANREG Engine Works
+## How the ANRE Engine Works
 
-## The `anreg-rs` Library
+## The Library
 
 ## Resource
