@@ -15,7 +15,8 @@ pub struct Program {
 pub enum Expression {
     Literal(Literal),
     Identifier(String),
-    Assertion(AssertionName),
+    AnchorAssertion(AnchorAssertionName),
+    BoundaryAssertion(BoundaryAssertionName),
 
     /**
      * the "group" of ANREG is different from the "group" of
@@ -82,20 +83,32 @@ pub struct CharRange {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum AssertionName {
+pub enum AnchorAssertionName {
     Start,
     End,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum BoundaryAssertionName {
     IsBound,
     IsNotBound,
 }
 
-impl Display for AssertionName {
+impl Display for AnchorAssertionName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name_str = match self {
-            AssertionName::Start => "start",
-            AssertionName::End => "end",
-            AssertionName::IsBound => "is_bound",
-            AssertionName::IsNotBound => "is_not_bound",
+            AnchorAssertionName::Start => "start",
+            AnchorAssertionName::End => "end",
+        };
+        f.write_str(name_str)
+    }
+}
+
+impl Display for BoundaryAssertionName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name_str = match self {
+            BoundaryAssertionName::IsBound => "is_bound",
+            BoundaryAssertionName::IsNotBound => "is_not_bound",
         };
         f.write_str(name_str)
     }
@@ -258,7 +271,8 @@ impl Display for Expression {
         match self {
             Expression::Literal(literal) => write!(f, "{}", literal),
             Expression::Identifier(identifier) => f.write_str(identifier),
-            Expression::Assertion(name) => write!(f, "{}", name),
+            Expression::AnchorAssertion(name) => write!(f, "{}", name),
+            Expression::BoundaryAssertion(name) => write!(f, "{}", name),
             Expression::Group(expressions) => {
                 let lines: Vec<String> = expressions.iter().map(|e| e.to_string()).collect();
                 write!(f, "({})", lines.join(", "))

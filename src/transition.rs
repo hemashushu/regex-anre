@@ -7,7 +7,7 @@
 use std::fmt::Display;
 
 use crate::{
-    ast::AssertionName,
+    ast::{AnchorAssertionName, BoundaryAssertionName},
     instance::{Instance, MatchRange},
     process::new_thread,
     route::Route,
@@ -22,7 +22,8 @@ pub enum Transition {
     String(StringTransition),
     CharSet(CharSetTransition),
     BackReference(BackReferenceTransition),
-    Assertion(AssertionTransition),
+    AnchorAssertion(AnchorAssertionTransition),
+    BoundaryAssertion(BoundaryAssertionTransition),
 
     // capture
     CaptureStart(CaptureStartTransition),
@@ -83,8 +84,13 @@ pub struct BackReferenceTransition {
 }
 
 #[derive(Debug)]
-pub struct AssertionTransition {
-    pub name: AssertionName,
+pub struct AnchorAssertionTransition {
+    pub name: AnchorAssertionName,
+}
+
+#[derive(Debug)]
+pub struct BoundaryAssertionTransition {
+    pub name: BoundaryAssertionName,
 }
 
 #[derive(Debug)]
@@ -246,9 +252,15 @@ impl BackReferenceTransition {
     }
 }
 
-impl AssertionTransition {
-    pub fn new(name: AssertionName) -> Self {
-        AssertionTransition { name }
+impl AnchorAssertionTransition {
+    pub fn new(name: AnchorAssertionName) -> Self {
+        AnchorAssertionTransition { name }
+    }
+}
+
+impl BoundaryAssertionTransition {
+    pub fn new(name: BoundaryAssertionName) -> Self {
+        BoundaryAssertionTransition { name }
     }
 }
 
@@ -308,22 +320,23 @@ impl LookBehindAssertionTransition {
 impl Display for Transition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Transition::Jump(j) => write!(f, "{}", j),
-            Transition::Char(c) => write!(f, "{}", c),
-            Transition::String(s) => write!(f, "{}", s),
-            Transition::CharSet(c) => write!(f, "{}", c),
-            Transition::SpecialChar(s) => write!(f, "{}", s),
-            Transition::BackReference(b) => write!(f, "{}", b),
-            Transition::Assertion(a) => write!(f, "{}", a),
-            Transition::CaptureStart(m) => write!(f, "{}", m),
-            Transition::CaptureEnd(m) => write!(f, "{}", m),
-            Transition::CounterReset(c) => write!(f, "{}", c),
-            Transition::CounterSave(c) => write!(f, "{}", c),
-            Transition::CounterInc(c) => write!(f, "{}", c),
-            Transition::CounterCheck(c) => write!(f, "{}", c),
-            Transition::Repetition(r) => write!(f, "{}", r),
-            Transition::LookAheadAssertion(l) => write!(f, "{}", l),
-            Transition::LookBehindAssertion(l) => write!(f, "{}", l),
+            Transition::Jump(t) => write!(f, "{}", t),
+            Transition::Char(t) => write!(f, "{}", t),
+            Transition::String(t) => write!(f, "{}", t),
+            Transition::CharSet(t) => write!(f, "{}", t),
+            Transition::SpecialChar(t) => write!(f, "{}", t),
+            Transition::BackReference(t) => write!(f, "{}", t),
+            Transition::AnchorAssertion(t) => write!(f, "{}", t),
+            Transition::BoundaryAssertion(t) => write!(f, "{}", t),
+            Transition::CaptureStart(t) => write!(f, "{}", t),
+            Transition::CaptureEnd(t) => write!(f, "{}", t),
+            Transition::CounterReset(t) => write!(f, "{}", t),
+            Transition::CounterSave(t) => write!(f, "{}", t),
+            Transition::CounterInc(t) => write!(f, "{}", t),
+            Transition::CounterCheck(t) => write!(f, "{}", t),
+            Transition::Repetition(t) => write!(f, "{}", t),
+            Transition::LookAheadAssertion(t) => write!(f, "{}", t),
+            Transition::LookBehindAssertion(t) => write!(f, "{}", t),
         }
     }
 }
@@ -403,9 +416,15 @@ impl Display for BackReferenceTransition {
     }
 }
 
-impl Display for AssertionTransition {
+impl Display for AnchorAssertionTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Assertion \"{}\"", self.name)
+        write!(f, "Anchor assertion \"{}\"", self.name)
+    }
+}
+
+impl Display for BoundaryAssertionTransition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Boundary assertion \"{}\"", self.name)
     }
 }
 
@@ -441,21 +460,13 @@ impl Display for CounterIncTransition {
 
 impl Display for CounterCheckTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Counter check {}",
-            self.repetition_type
-        )
+        write!(f, "Counter check {}", self.repetition_type)
     }
 }
 
 impl Display for RepetitionTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Repetition {}",
-            self.repetition_type
-        )
+        write!(f, "Repetition {}", self.repetition_type)
     }
 }
 
@@ -630,13 +641,24 @@ impl Transition {
                     }
                 }
             }
-            Transition::Assertion(transition) => {
+            Transition::AnchorAssertion(transition) => {
                 let bytes = instance.bytes;
                 let success = match transition.name {
-                    AssertionName::Start => is_first_char(position),
-                    AssertionName::End => is_end(bytes, position),
-                    AssertionName::IsBound => is_word_bound(bytes, position),
-                    AssertionName::IsNotBound => !is_word_bound(bytes, position),
+                    AnchorAssertionName::Start => is_first_char(position),
+                    AnchorAssertionName::End => is_end(bytes, position),
+                };
+
+                if success {
+                    CheckResult::Success(0, 0)
+                } else {
+                    CheckResult::Failure
+                }
+            }
+            Transition::BoundaryAssertion(transition) => {
+                let bytes = instance.bytes;
+                let success = match transition.name {
+                    BoundaryAssertionName::IsBound => is_word_bound(bytes, position),
+                    BoundaryAssertionName::IsNotBound => !is_word_bound(bytes, position),
                 };
 
                 if success {

@@ -392,7 +392,8 @@ impl<'a> Lexer<'a> {
         );
 
         let token = match name_string.as_str() {
-            "start" | "end" | "is_bound" | "is_not_bound" => Token::Assertion(name_string),
+            "start" | "end" => Token::AnchorAssertion(name_string),
+            "is_bound" | "is_not_bound" => Token::BoundaryAssertion(name_string),
             "char_space" | "char_not_space" | "char_word" | "char_not_word" | "char_digit"
             | "char_not_digit" => Token::PresetCharSet(name_string),
             "char_any" => Token::Special(name_string),
@@ -890,8 +891,12 @@ mod tests {
             Token::Identifier(s.to_owned())
         }
 
-        pub fn new_symbol(s: &str) -> Self {
-            Token::Assertion(s.to_owned())
+        pub fn new_anchor_assertion(s: &str) -> Self {
+            Token::AnchorAssertion(s.to_owned())
+        }
+
+        pub fn new_boundary_assertion(s: &str) -> Self {
+            Token::BoundaryAssertion(s.to_owned())
         }
 
         pub fn new_special(s: &str) -> Self {
@@ -1172,10 +1177,10 @@ mod tests {
             lex_from_str_without_location("char_any start end is_bound is_not_bound").unwrap(),
             vec![
                 Token::new_special("char_any"),
-                Token::new_symbol("start"),
-                Token::new_symbol("end"),
-                Token::new_symbol("is_bound"),
-                Token::new_symbol("is_not_bound"),
+                Token::new_anchor_assertion("start"),
+                Token::new_anchor_assertion("end"),
+                Token::new_boundary_assertion("is_bound"),
+                Token::new_boundary_assertion("is_not_bound"),
             ]
         );
 
@@ -1185,12 +1190,12 @@ mod tests {
             lex_from_str("start end").unwrap(),
             vec![
                 TokenWithRange::from_position_and_length(
-                    Token::new_symbol("start"),
+                    Token::new_anchor_assertion("start"),
                     &Location::new_position(0, 0, 0, 0),
                     5
                 ),
                 TokenWithRange::from_position_and_length(
-                    Token::new_symbol("end"),
+                    Token::new_anchor_assertion("end"),
                     &Location::new_position(0, 6, 0, 6),
                     3
                 )

@@ -8,8 +8,7 @@ pub const PARSER_PEEK_TOKEN_MAX_COUNT: usize = 4;
 
 use crate::{
     ast::{
-        AssertionName, CharRange, CharSet, CharSetElement, Expression, FunctionCall,
-        FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program, SpecialCharName,
+        AnchorAssertionName, BoundaryAssertionName, CharRange, CharSet, CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program, SpecialCharName
     },
     commentcleaner::clean,
     error::Error,
@@ -568,12 +567,19 @@ impl<'a> Parser<'a> {
                         self.next_token(); // consume identifier
                         Expression::Identifier(identifier)
                     }
-                    Token::Assertion(name_ref) => {
-                        // assertion
-                        let name = assertion_name_from_str(name_ref, &self.last_range)?;
+                    Token::AnchorAssertion(name_ref) => {
+                        // anchor assertion
+                        let name = anchor_assertion_name_from_str(name_ref, &self.last_range)?;
                         self.next_token(); // consume assertion
 
-                        Expression::Assertion(name)
+                        Expression::AnchorAssertion(name)
+                    }
+                    Token::BoundaryAssertion(name_ref) => {
+                        // boundary assertion
+                        let name = boundary_assertion_name_from_str(name_ref, &self.last_range)?;
+                        self.next_token(); // consume assertion
+
+                        Expression::BoundaryAssertion(name)
                     }
                     _ => {
                         let literal = self.parse_literal()?;
@@ -844,17 +850,32 @@ enum NotationQuantifier {
     AtLeast(usize),
 }
 
-fn assertion_name_from_str(name_str: &str, range: &Location) -> Result<AssertionName, Error> {
+fn anchor_assertion_name_from_str(name_str: &str, range: &Location) -> Result<AnchorAssertionName, Error> {
     let name = match name_str {
-        "start" => AssertionName::Start,
-        "end" => AssertionName::End,
-        "is_bound" => AssertionName::IsBound,
-        "is_not_bound" => AssertionName::IsNotBound,
+        "start" => AnchorAssertionName::Start,
+        "end" => AnchorAssertionName::End,
 
         // Unexpect
         _ => {
             return Err(Error::MessageWithLocation(
-                format!("Unexpect assertion name: \"{}\"", name_str),
+                format!("Unexpect anchor assertion name: \"{}\"", name_str),
+                range.to_owned(),
+            ))
+        }
+    };
+
+    Ok(name)
+}
+
+fn boundary_assertion_name_from_str(name_str: &str, range: &Location) -> Result<BoundaryAssertionName, Error> {
+    let name = match name_str {
+        "is_bound" => BoundaryAssertionName::IsBound,
+        "is_not_bound" => BoundaryAssertionName::IsNotBound,
+
+        // Unexpect
+        _ => {
+            return Err(Error::MessageWithLocation(
+                format!("Unexpect boundary assertion name: \"{}\"", name_str),
                 range.to_owned(),
             ))
         }

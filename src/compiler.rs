@@ -6,8 +6,8 @@
 
 use crate::{
     ast::{
-        AssertionName, CharRange, CharSet, CharSetElement, Expression, FunctionCall,
-        FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program,
+        AnchorAssertionName, BoundaryAssertionName, CharRange, CharSet, CharSetElement, Expression,
+        FunctionCall, FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program,
     },
     error::Error,
     parser::parse_from_str,
@@ -15,11 +15,12 @@ use crate::{
     rulechecker::{get_match_length, MatchLength},
     transition::{
         add_char, add_preset_digit, add_preset_space, add_preset_word, add_range,
-        AssertionTransition, BackReferenceTransition, CaptureEndTransition, CaptureStartTransition,
-        CharSetItem, CharSetTransition, CharTransition, CounterCheckTransition,
-        CounterIncTransition, CounterResetTransition, CounterSaveTransition, JumpTransition,
-        LookAheadAssertionTransition, LookBehindAssertionTransition, RepetitionTransition,
-        RepetitionType, SpecialCharTransition, StringTransition, Transition,
+        AnchorAssertionTransition, BackReferenceTransition, BoundaryAssertionTransition,
+        CaptureEndTransition, CaptureStartTransition, CharSetItem, CharSetTransition,
+        CharTransition, CounterCheckTransition, CounterIncTransition, CounterResetTransition,
+        CounterSaveTransition, JumpTransition, LookAheadAssertionTransition,
+        LookBehindAssertionTransition, RepetitionTransition, RepetitionType, SpecialCharTransition,
+        StringTransition, Transition,
     },
 };
 
@@ -78,7 +79,10 @@ impl<'a> Compiler<'a> {
         let mut ports = vec![];
 
         for (expression_index, expression) in expressions.iter().enumerate() {
-            if matches!(expression, Expression::Assertion(AssertionName::Start)) {
+            if matches!(
+                expression,
+                Expression::AnchorAssertion(AnchorAssertionName::Start)
+            ) {
                 if expression_index != 0 {
                     return Err(Error::Message(
                         "The assertion \"start\" can only be present at the beginning of expression."
@@ -87,8 +91,11 @@ impl<'a> Compiler<'a> {
                 }
 
                 fixed_start_position = true;
-                ports.push(self.emit_border_assertion(&AssertionName::Start)?);
-            } else if matches!(expression, Expression::Assertion(AssertionName::End)) {
+                ports.push(self.emit_anchor_assertion(&AnchorAssertionName::Start)?);
+            } else if matches!(
+                expression,
+                Expression::AnchorAssertion(AnchorAssertionName::End)
+            ) {
                 if expression_index != expressions.len() - 1 {
                     return Err(Error::Message(
                         "The assertion \"end\" can only be present at the end of expression."
@@ -96,7 +103,7 @@ impl<'a> Compiler<'a> {
                     ));
                 }
 
-                ports.push(self.emit_border_assertion(&AssertionName::End)?);
+                ports.push(self.emit_anchor_assertion(&AnchorAssertionName::End)?);
             } else {
                 ports.push(self.emit_expression(expression)?);
             }
@@ -160,7 +167,21 @@ impl<'a> Compiler<'a> {
         let result = match expression {
             Expression::Literal(literal) => self.emit_literal(literal)?,
             Expression::Identifier(identifier) => self.emit_backreference(identifier)?,
-            Expression::Assertion(name) => self.emit_boundary_assertion(name)?,
+            Expression::AnchorAssertion(name) => {
+                match name {
+                    AnchorAssertionName::Start => {
+                        return Err(Error::Message(
+                            "The assertion \"start\" can only exist at the beginning of an expression.".to_owned()));
+                    }
+                    AnchorAssertionName::End => {
+                        return Err(Error::Message(
+                            "The assertion \"end\" can only exist at the end of an expression."
+                                .to_owned(),
+                        ));
+                    }
+                }
+            }
+            Expression::BoundaryAssertion(name) => self.emit_boundary_assertion(name)?,
             Expression::Group(expressions) => self.emit_group(expressions)?,
             Expression::FunctionCall(function_call) => self.emit_function_call(function_call)?,
             Expression::Or(left, right) => self.emit_logic_or(left, right)?,
@@ -501,26 +522,21 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_boundary_assertion(&mut self, name: &AssertionName) -> Result<Port, Error> {
-        if matches!(name, AssertionName::Start | AssertionName::End) {
-            return Err(Error::Message("The assertion \"start\" and \"end\" can only exist at the beginning or end of an expression.".to_owned()));
-        }
-
+    fn emit_anchor_assertion(&mut self, name: &AnchorAssertionName) -> Result<Port, Error> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
-        let transition = Transition::Assertion(AssertionTransition::new(*name));
+        let transition = Transition::AnchorAssertion(AnchorAssertionTransition::new(*name));
 
         line.append_transition(in_node_index, out_node_index, transition);
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_border_assertion(&mut self, name: &AssertionName) -> Result<Port, Error> {
-        assert!(matches!(name, AssertionName::Start | AssertionName::End));
+    fn emit_boundary_assertion(&mut self, name: &BoundaryAssertionName) -> Result<Port, Error> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
-        let transition = Transition::Assertion(AssertionTransition::new(*name));
+        let transition = Transition::BoundaryAssertion(BoundaryAssertionTransition::new(*name));
 
         line.append_transition(in_node_index, out_node_index, transition);
         Ok(Port::new(in_node_index, out_node_index))
@@ -1516,11 +1532,11 @@ define(letter, ['a'..'f', char_space])
                 s,
                 "\
 - 0
-  -> 1, Assertion \"start\"
+  -> 1, Anchor assertion \"start\"
 - 1
   -> 2, Jump
 - 2
-  -> 3, Assertion \"is_bound\"
+  -> 3, Boundary assertion \"is_bound\"
 - 3
   -> 4, Jump
 - 4
@@ -1545,7 +1561,7 @@ define(letter, ['a'..'f', char_space])
                 s,
                 "\
 - 0
-  -> 1, Assertion \"is_not_bound\"
+  -> 1, Boundary assertion \"is_not_bound\"
 - 1
   -> 2, Jump
 - 2
@@ -1553,7 +1569,7 @@ define(letter, ['a'..'f', char_space])
 - 3
   -> 4, Jump
 - 4
-  -> 5, Assertion \"end\"
+  -> 5, Anchor assertion \"end\"
 - 5
   -> 7, Capture end {0}
 > 6

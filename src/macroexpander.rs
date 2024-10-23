@@ -314,11 +314,11 @@ mod tests {
             )
             .unwrap(),
             vec![
-                Token::new_symbol("start"),
+                Token::new_anchor_assertion("start"),
                 Token::Comma,
                 Token::Char('a'),
                 Token::Comma,
-                Token::new_symbol("end"),
+                Token::new_anchor_assertion("end"),
             ]
         );
 
@@ -332,14 +332,14 @@ mod tests {
             )
             .unwrap(),
             vec![
-                Token::new_symbol("start"),
+                Token::new_anchor_assertion("start"),
                 Token::Comma,
                 Token::Char('a'),
                 Token::Comma,
                 Token::Char('a'),
                 Token::Plus,
                 Token::Comma,
-                Token::new_symbol("end"),
+                Token::new_anchor_assertion("end"),
             ]
         );
 
@@ -361,7 +361,7 @@ mod tests {
             .unwrap(),
             vec![
                 // start
-                Token::new_symbol("start"),
+                Token::new_anchor_assertion("start"),
                 Token::NewLine,
                 // a
                 Token::Char('a'),
@@ -419,7 +419,7 @@ mod tests {
                 Token::RightParen,
                 Token::NewLine,
                 // end
-                Token::new_symbol("end"),
+                Token::new_anchor_assertion("end"),
             ]
         );
     }
