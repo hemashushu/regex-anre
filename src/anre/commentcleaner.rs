@@ -4,10 +4,9 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{
-    peekableiter::PeekableIter,
-    token::{Token, TokenWithRange},
-};
+use crate::peekableiter::PeekableIter;
+
+use super::token::{Token, TokenWithRange};
 
 pub fn clean(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
     // remove all comments.
@@ -37,9 +36,11 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
+        anre::{
+            lexer::lex_from_str,
+            token::{Token, TokenWithRange},
+        },
         error::Error,
-        lexer::lex_from_str,
-        token::{Token, TokenWithRange},
     };
 
     use super::clean;

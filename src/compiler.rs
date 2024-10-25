@@ -5,12 +5,12 @@
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
 use crate::{
+    anre::parse_from_str,
     ast::{
         AnchorAssertionName, BoundaryAssertionName, CharRange, CharSet, CharSetElement, Expression,
         FunctionCall, FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program,
     },
     error::Error,
-    parser::parse_from_str,
     route::{Line, Route},
     rulechecker::{get_match_length, MatchLength},
     transition::{

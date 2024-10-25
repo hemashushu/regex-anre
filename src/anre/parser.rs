@@ -8,15 +8,20 @@ pub const PARSER_PEEK_TOKEN_MAX_COUNT: usize = 4;
 
 use crate::{
     ast::{
-        AnchorAssertionName, BoundaryAssertionName, CharRange, CharSet, CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program, SpecialCharName
+        AnchorAssertionName, BoundaryAssertionName, CharRange, CharSet, CharSetElement, Expression,
+        FunctionCall, FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program,
+        SpecialCharName,
     },
-    commentcleaner::clean,
     error::Error,
-    lexer::lex_from_str,
     location::Location,
+    peekableiter::PeekableIter,
+};
+
+use super::{
+    commentcleaner::clean,
+    lexer::lex_from_str,
     macroexpander::expand,
     normalizer::normalize,
-    peekableiter::PeekableIter,
     token::{Token, TokenWithRange},
 };
 
@@ -850,7 +855,10 @@ enum NotationQuantifier {
     AtLeast(usize),
 }
 
-fn anchor_assertion_name_from_str(name_str: &str, range: &Location) -> Result<AnchorAssertionName, Error> {
+fn anchor_assertion_name_from_str(
+    name_str: &str,
+    range: &Location,
+) -> Result<AnchorAssertionName, Error> {
     let name = match name_str {
         "start" => AnchorAssertionName::Start,
         "end" => AnchorAssertionName::End,
@@ -867,7 +875,10 @@ fn anchor_assertion_name_from_str(name_str: &str, range: &Location) -> Result<An
     Ok(name)
 }
 
-fn boundary_assertion_name_from_str(name_str: &str, range: &Location) -> Result<BoundaryAssertionName, Error> {
+fn boundary_assertion_name_from_str(
+    name_str: &str,
+    range: &Location,
+) -> Result<BoundaryAssertionName, Error> {
     let name = match name_str {
         "is_bound" => BoundaryAssertionName::IsBound,
         "is_not_bound" => BoundaryAssertionName::IsNotBound,

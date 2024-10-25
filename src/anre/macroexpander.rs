@@ -4,12 +4,9 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{
-    error::Error,
-    location::Location,
-    peekableiter::PeekableIter,
-    token::{Token, TokenWithRange},
-};
+use crate::{error::Error, location::Location, peekableiter::PeekableIter};
+
+use super::token::{Token, TokenWithRange};
 
 fn remove_comments(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
     // remove all comments.
@@ -277,11 +274,13 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        commentcleaner::clean,
+        anre::{
+            commentcleaner::clean,
+            lexer::lex_from_str,
+            normalizer::normalize,
+            token::{Token, TokenWithRange},
+        },
         error::Error,
-        lexer::lex_from_str,
-        normalizer::normalize,
-        token::{Token, TokenWithRange},
     };
 
     use super::expand;

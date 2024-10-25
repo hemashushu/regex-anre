@@ -11,8 +11,9 @@ use crate::{
     error::Error,
     location::Location,
     peekableiter::PeekableIter,
-    token::{Comment, Token, TokenWithRange},
 };
+
+use super::token::{Comment, Token, TokenWithRange};
 
 pub fn lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, Error> {
     let mut chars = s.chars();
@@ -82,7 +83,7 @@ impl<'a> Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     fn lex(&mut self) -> Result<Vec<TokenWithRange>, Error> {
-        let mut token_ranges = vec![];
+        let mut token_with_ranges = vec![];
 
         while let Some(current_char) = self.peek_char(0) {
             match current_char {
@@ -95,7 +96,7 @@ impl<'a> Lexer<'a> {
                     self.next_char(); // consume '\r'
                     self.next_char(); // consume '\n'
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::NewLine,
                         &self.pop_saved_position(),
                         2,
@@ -104,7 +105,7 @@ impl<'a> Lexer<'a> {
                 '\n' => {
                     self.next_char(); // consume '\n'
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::NewLine,
                         &self.last_position,
                         1,
@@ -113,7 +114,7 @@ impl<'a> Lexer<'a> {
                 ',' => {
                     self.next_char(); // consume ','
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::Comma,
                         &self.last_position,
                         1,
@@ -125,7 +126,7 @@ impl<'a> Lexer<'a> {
                     self.next_char(); // consume '|'
                     self.next_char(); // consume '|'
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::LogicOr,
                         &self.pop_saved_position(),
                         2,
@@ -134,38 +135,37 @@ impl<'a> Lexer<'a> {
                 '!' => {
                     self.next_char(); // consume '!'
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::Exclamation,
                         &self.last_position,
                         1,
                     ));
                 }
+                '.' if self.peek_char_and_equals(1, '.') => {
+                    self.push_peek_position();
+
+                    self.next_char(); // consume '.'
+                    self.next_char(); // consume '.'
+
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::Interval,
+                        &self.pop_saved_position(),
+                        2,
+                    ));
+                }
                 '.' => {
-                    if self.peek_char_and_equals(1, '.') {
-                        self.push_peek_position();
+                    self.next_char(); // consume '.'
 
-                        self.next_char(); // consume '.'
-                        self.next_char(); // consume '.'
-
-                        token_ranges.push(TokenWithRange::from_position_and_length(
-                            Token::Interval,
-                            &self.pop_saved_position(),
-                            2,
-                        ));
-                    } else {
-                        self.next_char(); // consume '.'
-
-                        token_ranges.push(TokenWithRange::from_position_and_length(
-                            Token::Dot,
-                            &self.last_position,
-                            1,
-                        ));
-                    }
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::Dot,
+                        &self.last_position,
+                        1,
+                    ));
                 }
                 '[' => {
                     self.next_char(); // consume '['
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::LeftBracket,
                         &self.last_position,
                         1,
@@ -174,7 +174,7 @@ impl<'a> Lexer<'a> {
                 ']' => {
                     self.next_char(); // consume ']'
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::RightBracket,
                         &self.last_position,
                         1,
@@ -183,7 +183,7 @@ impl<'a> Lexer<'a> {
                 '(' => {
                     self.next_char(); // consume '('
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::LeftParen,
                         &self.last_position,
                         1,
@@ -192,82 +192,79 @@ impl<'a> Lexer<'a> {
                 ')' => {
                     self.next_char(); // consume ')'
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::RightParen,
                         &self.last_position,
                         1,
                     ))
                 }
+                '?' if self.peek_char_and_equals(1, '?') => {
+                    self.push_peek_position();
+
+                    self.next_char(); // consume '?'
+                    self.next_char(); // consume '?'
+
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::QuestionLazy,
+                        &self.pop_saved_position(),
+                        2,
+                    ));
+                }
                 '?' => {
-                    if self.peek_char_and_equals(1, '?') {
-                        self.push_peek_position();
+                    self.next_char(); // consume '?'
 
-                        self.next_char(); // consume '?'
-                        self.next_char(); // consume '?'
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::Question,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '+' if self.peek_char_and_equals(1, '?') => {
+                    self.push_peek_position();
 
-                        token_ranges.push(TokenWithRange::from_position_and_length(
-                            Token::QuestionLazy,
-                            &self.pop_saved_position(),
-                            2,
-                        ));
-                    } else {
-                        self.next_char(); // consume '?'
+                    self.next_char(); // consume '+'
+                    self.next_char(); // consume '?'
 
-                        token_ranges.push(TokenWithRange::from_position_and_length(
-                            Token::Question,
-                            &self.last_position,
-                            1,
-                        ))
-                    }
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::PlusLazy,
+                        &self.pop_saved_position(),
+                        2,
+                    ));
                 }
                 '+' => {
-                    if self.peek_char_and_equals(1, '?') {
-                        self.push_peek_position();
+                    self.next_char(); // consume '+'
 
-                        self.next_char(); // consume '+'
-                        self.next_char(); // consume '?'
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::Plus,
+                        &self.last_position,
+                        1,
+                    ))
+                }
+                '*' if self.peek_char_and_equals(1, '?') => {
+                    self.push_peek_position();
 
-                        token_ranges.push(TokenWithRange::from_position_and_length(
-                            Token::PlusLazy,
-                            &self.pop_saved_position(),
-                            2,
-                        ));
-                    } else {
-                        self.next_char(); // consume '+'
+                    self.next_char(); // consume '*'
+                    self.next_char(); // consume '?'
 
-                        token_ranges.push(TokenWithRange::from_position_and_length(
-                            Token::Plus,
-                            &self.last_position,
-                            1,
-                        ))
-                    }
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::AsteriskLazy,
+                        &self.pop_saved_position(),
+                        2,
+                    ));
                 }
                 '*' => {
-                    if self.peek_char_and_equals(1, '?') {
-                        self.push_peek_position();
+                    self.next_char(); // consume '*'
 
-                        self.next_char(); // consume '*'
-                        self.next_char(); // consume '?'
-
-                        token_ranges.push(TokenWithRange::from_position_and_length(
-                            Token::AsteriskLazy,
-                            &self.pop_saved_position(),
-                            2,
-                        ));
-                    } else {
-                        self.next_char(); // consume '*'
-
-                        token_ranges.push(TokenWithRange::from_position_and_length(
-                            Token::Asterisk,
-                            &self.last_position,
-                            1,
-                        ))
-                    }
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::Asterisk,
+                        &self.last_position,
+                        1,
+                    ))
                 }
                 '{' => {
                     self.next_char(); // consume '{'
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::LeftBrace,
                         &self.last_position,
                         1,
@@ -276,7 +273,7 @@ impl<'a> Lexer<'a> {
                 '}' => {
                     self.next_char(); // consume '}'
 
-                    token_ranges.push(TokenWithRange::from_position_and_length(
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
                         Token::RightBrace,
                         &self.last_position,
                         1,
@@ -284,27 +281,27 @@ impl<'a> Lexer<'a> {
                 }
                 '0'..='9' => {
                     // number
-                    token_ranges.push(self.lex_number()?);
+                    token_with_ranges.push(self.lex_number()?);
                 }
                 '"' => {
                     // string
-                    token_ranges.push(self.lex_string()?);
+                    token_with_ranges.push(self.lex_string()?);
                 }
                 '\'' => {
                     // char
-                    token_ranges.push(self.lex_char()?);
+                    token_with_ranges.push(self.lex_char()?);
                 }
                 '/' if self.peek_char_and_equals(1, '/') => {
                     // line comment
-                    token_ranges.push(self.lex_line_comment()?);
+                    token_with_ranges.push(self.lex_line_comment()?);
                 }
                 '/' if self.peek_char_and_equals(1, '*') => {
                     // block comment
-                    token_ranges.push(self.lex_block_comment()?);
+                    token_with_ranges.push(self.lex_block_comment()?);
                 }
                 'a'..='z' | 'A'..='Z' | '_' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
                     // identifier (the key name of struct/object) or keyword
-                    token_ranges.push(self.lex_identifier()?);
+                    token_with_ranges.push(self.lex_identifier()?);
                 }
                 current_char => {
                     return Err(Error::MessageWithLocation(
@@ -315,7 +312,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        Ok(token_ranges)
+        Ok(token_with_ranges)
     }
 
     fn lex_identifier(&mut self) -> Result<TokenWithRange, Error> {
@@ -492,10 +489,10 @@ impl<'a> Lexer<'a> {
                                         // new line character (line feed, LF, ascii 10)
                                         '\n'
                                     }
-                                    '0' => {
-                                        // null char
-                                        '\0'
-                                    }
+                                    // '0' => {
+                                    //     // null char
+                                    //     '\0'
+                                    // }
                                     'u' => {
                                         if self.peek_char_and_equals(0, '{') {
                                             // unicode code point, e.g. '\u{2d}', '\u{6587}'
@@ -879,12 +876,12 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
+        anre::token::{Comment, Token, TokenWithRange},
         error::Error,
-        lexer::{lex_from_str, Comment, TokenWithRange},
         location::Location,
     };
 
-    use super::Token;
+    use super::lex_from_str;
 
     impl Token {
         pub fn new_identifier(s: &str) -> Self {

@@ -4,21 +4,11 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-mod ast;
-mod charposition;
-mod compiler;
-mod error;
-mod errorprinter;
-mod instance;
-mod location;
-mod peekableiter;
-mod rulechecker;
-mod tradition;
-mod transition;
-mod utf8reader;
-mod anre;
+mod commentcleaner;
+mod lexer;
+mod macroexpander;
+mod normalizer;
+mod parser;
+mod token;
 
-pub mod process;
-pub mod route;
-
-pub use process::Regex;
+pub use parser::parse_from_str;

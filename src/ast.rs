@@ -248,8 +248,8 @@ impl Display for Literal {
 impl Display for FunctionCallArg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FunctionCallArg::Number(n) => write!(f, "{}", n),
-            FunctionCallArg::Identifier(i) => write!(f, "{}", i),
+            FunctionCallArg::Number(i) => write!(f, "{}", i),
+            FunctionCallArg::Identifier(s) => write!(f, "{}", s),
             FunctionCallArg::Expression(e) => write!(f, "{}", e),
         }
     }
@@ -269,15 +269,15 @@ impl Display for FunctionCall {
 impl Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::Literal(literal) => write!(f, "{}", literal),
-            Expression::Identifier(identifier) => f.write_str(identifier),
-            Expression::AnchorAssertion(name) => write!(f, "{}", name),
-            Expression::BoundaryAssertion(name) => write!(f, "{}", name),
+            Expression::Literal(e) => write!(f, "{}", e),
+            Expression::Identifier(s) => f.write_str(s),
+            Expression::AnchorAssertion(e) => write!(f, "{}", e),
+            Expression::BoundaryAssertion(e) => write!(f, "{}", e),
             Expression::Group(expressions) => {
                 let lines: Vec<String> = expressions.iter().map(|e| e.to_string()).collect();
                 write!(f, "({})", lines.join(", "))
             }
-            Expression::FunctionCall(function_call) => write!(f, "{}", function_call),
+            Expression::FunctionCall(e) => write!(f, "{}", e),
             Expression::Or(left, right) => write!(f, "{} || {}", left, right),
         }
     }

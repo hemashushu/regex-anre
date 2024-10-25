@@ -114,7 +114,7 @@ impl Token {
             Token::Plus => "plus sign \"+\"".to_owned(),
             Token::PlusLazy => "plus and question mark \"+?\"".to_owned(),
             Token::Asterisk => "asterisk \"*\"".to_owned(),
-            Token::AsteriskLazy => "asterisk and question \"*?\"".to_owned(),
+            Token::AsteriskLazy => "asterisk and question mark \"*?\"".to_owned(),
             Token::LeftBrace => "left brace \"{\"".to_owned(),
             Token::RightBrace => "right brace \"}\"".to_owned(),
         }
