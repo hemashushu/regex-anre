@@ -1,19 +1,18 @@
 [package]
-name = "anreg"
-version = "1.1.0"
+name = "regex-anre"
+version = "0.1.0"
 edition = "2021"
 
 license = "MPL-2.0"
-description = "ANREG is a brand new regex language that offers all the capabilities of traditional regex but in much simpler form."
-homepage = "https://hemashushu.github.io/works/anreg"
-documentation = "https://hemashushu.github.io/works/anreg"
-repository = "https://github.com/hemashushu/anreg-rs"
+description = "regex-anre is a brand new regex engine for Rust with JIT and ANRE language support."
+homepage = "https://hemashushu.github.io/works/anre"
+documentation = "https://hemashushu.github.io/works/anre"
+repository = "https://github.com/hemashushu/regex-anre"
 readme = "README.md"
-keywords = ["regex", "xiaoxuan", "anreg"]
+keywords = ["regex", "regex-anre", "regex-jit", "anre", "jit"]
 categories = []
 
 [dependencies]
-# argh = "0.1.12"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"

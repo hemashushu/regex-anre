@@ -90,21 +90,21 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect_token(&mut self, expected_token: &Token) -> Result<(), Error> {
+    fn expect_token(&mut self, expected_token: &Token, token_description: &str) -> Result<(), Error> {
         match self.next_token() {
             Some(token) => {
                 if &token == expected_token {
                     Ok(())
                 } else {
                     Err(Error::MessageWithLocation(
-                        format!("Expect token: {}.", expected_token.get_description()),
+                        format!("Expect token: {}.", token_description),
                         self.last_range.get_position_by_range_start(),
                     ))
                 }
             }
             None => Err(Error::UnexpectedEndOfDocument(format!(
                 "Expect token: {}.",
-                expected_token.get_description()
+                token_description
             ))),
         }
     }
@@ -462,7 +462,7 @@ impl<'a> Parser<'a> {
         };
 
         self.consume_new_line_if_exist();
-        self.expect_token(&Token::RightBrace)?; // consume '}'
+        self.expect_token(&Token::RightBrace, "right brace \"}\"")?; // consume '}'
 
         let lazy = if self.peek_token_and_equals(0, &Token::Question) {
             self.next_token(); // consume trailing '?'
@@ -532,7 +532,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::RightParen)?; // consume ')'
+        self.expect_token(&Token::RightParen, "right parenthese \")\"")?; // consume ')'
 
         let function_call = FunctionCall {
             name,
@@ -608,7 +608,7 @@ impl<'a> Parser<'a> {
         // ^                    ^-- to here
         // | current, validated
 
-        self.expect_token(&Token::LeftParen)?; // consume "("
+        self.expect_token(&Token::LeftParen, "left parenthese \"(\"")?; // consume "("
         self.consume_new_line_if_exist(); // consume trailing new-line
 
         let mut expressions: Vec<Expression> = vec![];
@@ -627,7 +627,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::RightParen)?; // consume ")"
+        self.expect_token(&Token::RightParen, "right parenthese \")\"")?; // consume ")"
 
         Ok(Expression::Group(expressions))
     }
@@ -676,7 +676,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::RightParen)?; // consume ')'
+        self.expect_token(&Token::RightParen, "right parenthese \")\"")?; // consume ')'
 
         let function_call = FunctionCall {
             name,
@@ -822,7 +822,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::RightBracket)?;
+        self.expect_token(&Token::RightBracket, "right bracket \"]\"")?;
 
         Ok(elements)
     }

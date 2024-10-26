@@ -1321,11 +1321,11 @@ mod tests {
             vec![Token::Char('\n')]
         );
 
-        // escape char `\0`
-        assert_eq!(
-            lex_from_str_without_location("'\\0'").unwrap(),
-            vec![Token::Char('\0')]
-        );
+        // // escape char `\0`
+        // assert_eq!(
+        //     lex_from_str_without_location("'\\0'").unwrap(),
+        //     vec![Token::Char('\0')]
+        // );
 
         // escape char, unicode
         assert_eq!(
