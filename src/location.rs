@@ -100,4 +100,12 @@ impl Location {
             ..*self
         }
     }
+
+    pub fn move_position_backward(&self) -> Self {
+        Self {
+            index: self.index - 1,
+            column: self.column - 1,
+            ..*self
+        }
+    }
 }

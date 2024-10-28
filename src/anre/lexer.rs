@@ -508,7 +508,11 @@ impl<'a> Lexer<'a> {
                                     _ => {
                                         return Err(Error::MessageWithLocation(
                                             format!("Unexpected escape char '{}'.", previous_char),
-                                            self.last_position,
+                                            // self.last_position,
+                                            Location::from_position_and_length(
+                                                &self.last_position.move_position_backward(),
+                                                2,
+                                            ),
                                         ));
                                     }
                                 }
@@ -712,7 +716,10 @@ impl<'a> Lexer<'a> {
                                                     "Unsupported escape char '{}'.",
                                                     previous_char
                                                 ),
-                                                self.last_position,
+                                                Location::from_position_and_length(
+                                                    &self.last_position.move_position_backward(),
+                                                    2,
+                                                ),
                                             ));
                                         }
                                     }
@@ -1434,30 +1441,30 @@ mod tests {
 
         // err: unsupported escape char \v
         assert!(matches!(
-            lex_from_str_without_location("'\\v'"),
+            lex_from_str_without_location(r#"'\v'"#),
             Err(Error::MessageWithLocation(
                 _,
                 Location {
                     unit: 0,
-                    index: 2,
+                    index: 1,
                     line: 0,
-                    column: 2,
-                    length: 0,
+                    column: 1,
+                    length: 2,
                 }
             ))
         ));
 
         // err: unsupported hex escape "\x.."
         assert!(matches!(
-            lex_from_str_without_location("'\\x33'"),
+            lex_from_str_without_location(r#"'\x33'"#),
             Err(Error::MessageWithLocation(
                 _,
                 Location {
                     unit: 0,
-                    index: 2,
+                    index: 1,
                     line: 0,
-                    column: 2,
-                    length: 0
+                    column: 1,
+                    length: 2
                 }
             ))
         ));
@@ -1677,10 +1684,10 @@ mod tests {
                 _,
                 Location {
                     unit: 0,
-                    index: 5,
+                    index: 4,
                     line: 0,
-                    column: 5,
-                    length: 0
+                    column: 4,
+                    length: 2
                 }
             ))
         ));
@@ -1692,10 +1699,10 @@ mod tests {
                 _,
                 Location {
                     unit: 0,
-                    index: 5,
+                    index: 4,
                     line: 0,
-                    column: 5,
-                    length: 0
+                    column: 4,
+                    length: 2
                 }
             ))
         ));
