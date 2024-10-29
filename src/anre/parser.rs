@@ -8,9 +8,9 @@ pub const PARSER_PEEK_TOKEN_MAX_COUNT: usize = 4;
 
 use crate::{
     ast::{
-        AnchorAssertionName, BoundaryAssertionName, CharRange, CharSet, CharSetElement, Expression,
-        FunctionCall, FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program,
-        SpecialCharName,
+        AnchorAssertionName, BackReference, BoundaryAssertionName, CharRange, CharSet,
+        CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
+        PresetCharSetName, Program, SpecialCharName,
     },
     error::Error,
     location::Location,
@@ -61,13 +61,6 @@ impl<'a> Parser<'a> {
             Some(TokenWithRange { token, .. }) if token == expected_token)
     }
 
-    // fn peek_range(&self, offset: usize) -> Option<&Location> {
-    //     match self.upstream.peek(offset) {
-    //         Some(TokenWithRange { range, .. }) => Some(range),
-    //         None => None,
-    //     }
-    // }
-
     // consume '\n' if it exists.
     fn consume_new_line_if_exist(&mut self) -> bool {
         match self.peek_token(0) {
@@ -90,7 +83,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect_token(&mut self, expected_token: &Token, token_description: &str) -> Result<(), Error> {
+    fn expect_token(
+        &mut self,
+        expected_token: &Token,
+        token_description: &str,
+    ) -> Result<(), Error> {
         match self.next_token() {
             Some(token) => {
                 if &token == expected_token {
@@ -108,22 +105,6 @@ impl<'a> Parser<'a> {
             ))),
         }
     }
-
-    // fn expect_new_line_or_comma(&mut self) -> Result<(), Error> {
-    //     match self.peek_token(0) {
-    //         Some(Token::NewLine | Token::Comma) => {
-    //             self.next_token();
-    //             Ok(())
-    //         }
-    //         Some(_) => Err(Error::MessageWithLocation(
-    //             "Expect a comma or new-line.".to_owned(),
-    //             self.peek_range(0).unwrap().get_position_by_range_start(),
-    //         )),
-    //         None => Err(Error::UnexpectedEndOfDocument(
-    //             "Expect a comma or new-line.".to_owned(),
-    //         )),
-    //     }
-    // }
 
     fn expect_identifier(&mut self) -> Result<String, Error> {
         match self.peek_token(0) {
@@ -177,7 +158,6 @@ impl<'a> Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn parse_program(&mut self) -> Result<Program, Error> {
-        // let mut definitions = vec![];
         let mut expressions = vec![];
 
         while self.peek_token(0).is_some() {
@@ -191,10 +171,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let program = Program {
-            // definitions,
-            expressions,
-        };
+        let program = Program { expressions };
 
         Ok(program)
     }
@@ -203,26 +180,27 @@ impl<'a> Parser<'a> {
         // token ...
         // -----
         // ^
-        // | current, not None
+        // | current, None or Some(...)
 
         // the expression parsing order:
-        // 1. binary expressions
-        // 2. unary expressions
-        // 3. base expression
+        //
+        //    > precedence low <
+        // 1. binary expressions (logic or, and, equality, comparision, additive, multiplicative etc.)
+        // 2. unary expressions (negative etc.)
+        // 3. simple expressions (dot function call, slice, index etc.)
+        // 4. primary expressions (group, list, map, identifier, literal etc.)
+        //    > precedence high <
 
         self.parse_logic_or()
     }
 
-    // binary expression (login or, etc.)   | precedence low
-    // |-- unary expression
-    // |   |-- base expression              | precedence high
     fn parse_logic_or(&mut self) -> Result<Expression, Error> {
         // token ... [ "||" expression ]
         // -----
         // ^
-        // | current, not None
+        // | current, None or Some(...)
 
-        let mut left = self.parse_simple_expression()?;
+        let mut left = self.parse_notation_and_rear_function_call()?;
 
         while let Some(Token::LogicOr) = self.peek_token(0) {
             self.next_token(); // consume "||"
@@ -242,8 +220,8 @@ impl<'a> Parser<'a> {
             // using `parse_expression` for right-to-left associative, e.g.
             // `let right = self.parse_expression()?;`
             // or
-            // using `parse_simple_expression` for left-to-right associative, e.g.
-            // `let right = self.parse_simple_expression()?;`
+            // using `parse_notation_and_rear_function_call` for left-to-right associative, e.g.
+            // `let right = self.parse_notation_and_rear_function_call()?;`
             //
             // for the current interpreter, it is more efficient by using right-associative.
 
@@ -255,25 +233,13 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    // binary expression (login or, etc.)
-    // |-- unary expression
-    // |   |-- base expression
-    fn parse_simple_expression(&mut self) -> Result<Expression, Error> {
-        // token ...
-        // -----
-        // ^
-        // | current, may be None
-
-        self.parse_notation_and_rear_function_call()
-    }
-
     fn parse_notation_and_rear_function_call(&mut self) -> Result<Expression, Error> {
-        // token ... [ notation | "." identifier "("]
+        // token ... [ notations | ("." identifier "(" ...)]
         // -----
         // ^
-        // | current, may be None
+        // | current, None or Some(...)
 
-        let mut left = self.parse_base_expression()?;
+        let mut expression = self.parse_primary_expression()?;
 
         while let Some(token) = self.peek_token(0) {
             match token {
@@ -301,10 +267,10 @@ impl<'a> Parser<'a> {
 
                     let function_call = FunctionCall {
                         name,
-                        expression: Box::new(left),
+                        expression: Box::new(expression),
                         args: vec![],
                     };
-                    left = Expression::FunctionCall(Box::new(function_call));
+                    expression = Expression::FunctionCall(Box::new(function_call));
 
                     self.next_token(); // consume notation
                 }
@@ -353,10 +319,10 @@ impl<'a> Parser<'a> {
 
                     let function_call = FunctionCall {
                         name,
-                        expression: Box::new(left),
+                        expression: Box::new(expression),
                         args,
                     };
-                    left = Expression::FunctionCall(Box::new(function_call));
+                    expression = Expression::FunctionCall(Box::new(function_call));
                 }
                 Token::NewLine
                     if matches!(self.peek_token(1), Some(Token::Dot))
@@ -365,15 +331,15 @@ impl<'a> Parser<'a> {
                 {
                     self.next_token(); // consume the new-line
 
-                    let function_call = self.continue_parse_rear_function_call(left)?;
-                    left = Expression::FunctionCall(Box::new(function_call));
+                    let function_call = self.continue_parse_rear_function_call(expression)?;
+                    expression = Expression::FunctionCall(Box::new(function_call));
                 }
                 Token::Dot
                     if matches!(self.peek_token(1), Some(Token::Identifier(_)))
                         && self.peek_token_and_equals(2, &Token::LeftParen) =>
                 {
-                    let function_call = self.continue_parse_rear_function_call(left)?;
-                    left = Expression::FunctionCall(Box::new(function_call));
+                    let function_call = self.continue_parse_rear_function_call(expression)?;
+                    expression = Expression::FunctionCall(Box::new(function_call));
                 }
                 _ => {
                     break;
@@ -381,7 +347,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(left)
+        Ok(expression)
     }
 
     fn continue_parse_notation_quantifier(&mut self) -> Result<(NotationQuantifier, bool), Error> {
@@ -543,13 +509,13 @@ impl<'a> Parser<'a> {
         Ok(function_call)
     }
 
-    fn parse_base_expression(&mut self) -> Result<Expression, Error> {
+    fn parse_primary_expression(&mut self) -> Result<Expression, Error> {
         // token ...
         // ---------
         // ^
-        // | current, may be None
+        // | current, None or Some(...)
 
-        // base expression:
+        // primary expressions:
         // - literal
         // - identifier
         // - assertion
@@ -570,7 +536,7 @@ impl<'a> Parser<'a> {
                         // identifier
                         let identifier = identifier_ref.to_owned();
                         self.next_token(); // consume identifier
-                        Expression::Identifier(identifier)
+                        Expression::BackReference(BackReference::Name(identifier))
                     }
                     Token::AnchorAssertion(name_ref) => {
                         // anchor assertion
@@ -691,14 +657,14 @@ impl<'a> Parser<'a> {
         // token ...
         // -----
         // ^
-        // | current, not None
+        // | current, Some(...)
 
-        // literal:
+        // literals:
         //   - char
         //   - string
         //   - charset
         //   - preset_charset
-        //   - special
+        //   - special char
 
         match self.peek_token(0) {
             Some(token) => {
@@ -1012,7 +978,6 @@ mod tests {
         assert_eq!(
             program,
             Program {
-                // definitions: vec![],
                 expressions: vec![
                     Expression::Literal(Literal::Char('a')),
                     Expression::Literal(Literal::String("foo".to_owned())),
@@ -1036,7 +1001,6 @@ mod tests {
         assert_eq!(
             program,
             Program {
-                // definitions: vec![],
                 expressions: vec![Expression::Literal(Literal::CharSet(CharSet {
                     negative: false,
                     elements: vec![
@@ -1340,7 +1304,6 @@ at_least_lazy('z', 11)"#
             assert_eq!(
                 program,
                 Program {
-                    // definitions: vec![],
                     expressions: vec![Expression::Or(
                         Box::new(Expression::Literal(Literal::Char('a'))),
                         Box::new(Expression::Literal(Literal::Char('b'))),
@@ -1362,7 +1325,6 @@ at_least_lazy('z', 11)"#
             assert_eq!(
                 program,
                 Program {
-                    // definitions: vec![],
                     expressions: vec![Expression::Or(
                         Box::new(Expression::Literal(Literal::Char('a'))),
                         Box::new(Expression::Or(

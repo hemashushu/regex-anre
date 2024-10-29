@@ -27,7 +27,7 @@ pub enum Token {
     CharRange(char, char), // e.g. a-zA-Z0-9
     PresetCharSet(char),
     BoundaryAssertion(char),
-    Repetition(Repetition), // {N}, {M,}, {M,N}
+    Repetition(Repetition, /* lazy */ bool), // {N}, {M,}, {M,N}
 
     GroupStart,           // (
     NonCapturing,         // (?...)

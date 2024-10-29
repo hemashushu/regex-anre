@@ -7,8 +7,9 @@
 use crate::{
     anre::parse_from_str,
     ast::{
-        AnchorAssertionName, BoundaryAssertionName, CharRange, CharSet, CharSetElement, Expression,
-        FunctionCall, FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program,
+        AnchorAssertionName, BackReference, BoundaryAssertionName, CharRange, CharSet,
+        CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
+        PresetCharSetName, Program,
     },
     error::Error,
     route::{Line, Route},
@@ -166,7 +167,7 @@ impl<'a> Compiler<'a> {
     fn emit_expression(&mut self, expression: &Expression) -> Result<Port, Error> {
         let result = match expression {
             Expression::Literal(literal) => self.emit_literal(literal)?,
-            Expression::Identifier(identifier) => self.emit_backreference(identifier)?,
+            Expression::BackReference(back_reference) => self.emit_backreference(back_reference)?,
             Expression::AnchorAssertion(name) => {
                 match name {
                     AnchorAssertionName::Start => {
@@ -192,13 +193,13 @@ impl<'a> Compiler<'a> {
 
     fn emit_group(&mut self, expressions: &[Expression]) -> Result<Port, Error> {
         /*
-         * the "group" of ANREG is different from the "group" of
+         * the "group" of ANRE is different from the "group" of
          * ordinary regular expressions.
-         * the "group" of ANREG is just a series of parenthesized patterns
+         * the "group" of ANRE is just a series of parenthesized patterns
          * that are not captured unless called by the 'name' or 'index' function.
          * e.g.
-         * ANREG `('a', 'b', char_word+)` is equivalent to oridinary regex `ab\w+`
-         * the "group" of ANREG is used to group patterns and
+         * ANRE `('a', 'b', char_word+)` is equivalent to oridinary regex `ab\w+`
+         * the "group" of ANRE is used to group patterns and
          * change operator precedence and associativity
          */
 
@@ -542,7 +543,25 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_backreference(&mut self, name: &str) -> Result<Port, Error> {
+    fn emit_backreference(&mut self, back_reference: &BackReference) -> Result<Port, Error> {
+        match back_reference {
+            BackReference::Index(index) => self.emit_backreference_by_index(*index),
+            BackReference::Name(name) => self.emit_backreference_by_name(name),
+        }
+    }
+
+    fn emit_backreference_by_index(&mut self, capture_group_index: usize) -> Result<Port, Error> {
+        if capture_group_index >= self.route.capture_groups.len() {
+            return Err(Error::Message(format!(
+                "The group index ({}) of back-reference is out of range, the max index should be: {}.",
+                capture_group_index, self.route.capture_groups.len() - 1
+            )));
+        }
+
+        self.continue_emit_backreference(capture_group_index)
+    }
+
+    fn emit_backreference_by_name(&mut self, name: &str) -> Result<Port, Error> {
         let capture_group_index_option = self.route.get_capture_group_index_by_name(name);
         let capture_group_index = if let Some(i) = capture_group_index_option {
             i
@@ -553,6 +572,10 @@ impl<'a> Compiler<'a> {
             )));
         };
 
+        self.continue_emit_backreference(capture_group_index)
+    }
+
+    fn continue_emit_backreference(&mut self, capture_group_index: usize) -> Result<Port, Error> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -1045,7 +1068,7 @@ mod tests {
         }
 
         // char group
-        // note: the group of anreg is different from traditional regex, it is
+        // note: the group of anre is different from traditional regex, it is
         // only a sequence pattern.
         {
             let route = compile_from_str(r#"'a',('b','c'), 'd'"#).unwrap();

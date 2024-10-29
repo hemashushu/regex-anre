@@ -387,6 +387,15 @@ impl<'a> Lexer<'a> {
                         1,
                     ));
                 }
+                '|' => {
+                    self.next_char(); // consume '|'
+
+                    token_with_ranges.push(TokenWithRange::from_position_and_length(
+                        Token::LogicOr,
+                        &self.last_position,
+                        1,
+                    ));
+                }
                 '\\' => {
                     let twr = self.lex_main_escaping()?;
                     token_with_ranges.push(twr);
@@ -598,9 +607,15 @@ impl<'a> Lexer<'a> {
                         Token::BoundaryAssertion(c)
                     }
                     // back reference by index
-                    '1'..'9' => {
+                    '1'..='9' => {
                         let num = self.lex_number()?;
                         Token::BackReferenceNumber(num)
+                    }
+                    '0' => {
+                        return Err(Error::MessageWithLocation(
+                            "Cannot back-reference group 0.".to_owned(),
+                            self.last_position.move_position_forward(),
+                        ));
                     }
                     // back reference by name
                     'k' => {
@@ -695,6 +710,12 @@ impl<'a> Lexer<'a> {
                     'b' | 'B' => {
                         return Err(Error::MessageWithLocation(
                             "Boundary assertions are not supported in charset.".to_owned(),
+                            Location::from_position_and_length(&self.pop_saved_position(), 2),
+                        ));
+                    }
+                    '0'..='9' | 'k' => {
+                        return Err(Error::MessageWithLocation(
+                            "Back references are not supported in charset.".to_owned(),
                             Location::from_position_and_length(&self.pop_saved_position(), 2),
                         ));
                     }
@@ -956,7 +977,14 @@ impl<'a> Lexer<'a> {
             Repetition::Specified(from)
         };
 
-        let token = Token::Repetition(repetition);
+        let lazy = if self.peek_char_and_equals(0, '?') {
+            self.next_char(); // consume '?'
+            true
+        } else {
+            false
+        };
+
+        let token = Token::Repetition(repetition, lazy);
         let range = Location::from_position_pair_with_end_included(
             &self.pop_saved_position(),
             &self.last_position,
@@ -1541,19 +1569,40 @@ mod tests {
             lex_from_str(r#"{3}{5,}{7,13}"#).unwrap(),
             vec![
                 TokenWithRange::from_position_and_length(
-                    Token::Repetition(Repetition::Specified(3)),
+                    Token::Repetition(Repetition::Specified(3), false),
                     &Location::new_position(0, 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
-                    Token::Repetition(Repetition::AtLeast(5)),
+                    Token::Repetition(Repetition::AtLeast(5), false),
                     &Location::new_position(0, 3, 0, 3),
                     4
                 ),
                 TokenWithRange::from_position_and_length(
-                    Token::Repetition(Repetition::Range(7, 13)),
+                    Token::Repetition(Repetition::Range(7, 13), false),
                     &Location::new_position(0, 7, 0, 7),
                     6
+                ),
+            ]
+        );
+
+        assert_eq!(
+            lex_from_str(r#"{3}?{5,}?{7,13}?"#).unwrap(),
+            vec![
+                TokenWithRange::from_position_and_length(
+                    Token::Repetition(Repetition::Specified(3), true),
+                    &Location::new_position(0, 0, 0, 0),
+                    4
+                ),
+                TokenWithRange::from_position_and_length(
+                    Token::Repetition(Repetition::AtLeast(5), true),
+                    &Location::new_position(0, 4, 0, 4),
+                    5
+                ),
+                TokenWithRange::from_position_and_length(
+                    Token::Repetition(Repetition::Range(7, 13), true),
+                    &Location::new_position(0, 9, 0, 9),
+                    7
                 ),
             ]
         );
@@ -1702,6 +1751,21 @@ mod tests {
                     index: 3,
                     line: 0,
                     column: 3,
+                    length: 0
+                }
+            ))
+        ));
+
+        // err: back reference to group 0
+        assert!(matches!(
+            lex_from_str(r#"(a)b\0"#),
+            Err(Error::MessageWithLocation(
+                _,
+                Location {
+                    unit: 0,
+                    index: 5,
+                    line: 0,
+                    column: 5,
                     length: 0
                 }
             ))

@@ -67,7 +67,7 @@ pub fn get_match_length(exp: &Expression) -> MatchLength {
             Literal::CharSet(_) => MatchLength::Fixed(1),
             Literal::PresetCharSet(_) => MatchLength::Fixed(1),
         },
-        Expression::Identifier(_) => MatchLength::Variable,
+        Expression::BackReference(_) => MatchLength::Variable,
         Expression::AnchorAssertion(_) => MatchLength::Fixed(0),
         Expression::BoundaryAssertion(_) => MatchLength::Fixed(0),
         Expression::Group(exps) => exps

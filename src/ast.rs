@@ -14,18 +14,18 @@ pub struct Program {
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Literal(Literal),
-    Identifier(String),
+    BackReference(BackReference),
     AnchorAssertion(AnchorAssertionName),
     BoundaryAssertion(BoundaryAssertionName),
 
     /**
-     * the "group" of ANREG is different from the "group" of
+     * the "group" of ANRE is different from the "group" of
      * ordinary regular expressions.
-     * the "group" of ANREG is just a series of parenthesized patterns
+     * the "group" of ANRE is just a series of parenthesized patterns
      * that are not captured unless called by the 'name' or 'index' function.
      * e.g.
-     * ANREG `('a', 'b', char_word+)` is equivalent to oridinary regex `ab\w+`
-     * the "group" of ANREG is used to group patterns and
+     * ANRE `('a', 'b', char_word+)` is equivalent to oridinary regex `ab\w+`
+     * the "group" of ANRE is used to group patterns and
      * change operator precedence and associativity
      */
     Group(Vec<Expression>),
@@ -80,6 +80,21 @@ pub enum CharSetElement {
 pub struct CharRange {
     pub start: char,
     pub end_included: char,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BackReference {
+    Index(usize),
+    Name(String),
+}
+
+impl Display for BackReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackReference::Index(index) => write!(f, "^{}", index),
+            BackReference::Name(name) => f.write_str(name),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -270,7 +285,7 @@ impl Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Literal(e) => write!(f, "{}", e),
-            Expression::Identifier(s) => f.write_str(s),
+            Expression::BackReference(e) => write!(f, "{}", e),
             Expression::AnchorAssertion(e) => write!(f, "{}", e),
             Expression::BoundaryAssertion(e) => write!(f, "{}", e),
             Expression::Group(expressions) => {
