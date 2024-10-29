@@ -7,7 +7,7 @@
 use std::ops::{Index, Range};
 
 use crate::{
-    compiler::compile_from_str,
+    compiler::compile_from_anre,
     error::Error,
     instance::{Instance, Thread},
     route::{Route, MAIN_LINE_INDEX},
@@ -21,12 +21,12 @@ pub struct Regex {
 
 impl Regex {
     pub fn new(pattern: &str) -> Result<Self, Error> {
-        let route = compile_from_str(pattern)?;
+        let route = compile_from_anre(pattern)?;
         Ok(Regex { route })
     }
 
     pub fn from_anre(expression: &str) -> Result<Self, Error> {
-        let route = compile_from_str(expression)?;
+        let route = compile_from_anre(expression)?;
         Ok(Regex { route })
     }
 
@@ -1435,6 +1435,18 @@ mod tests {
             assert_eq!(matches.next(), Some(new_match(18, 20, "29")));
             assert_eq!(matches.next(), None);
         }
+
+        // `('a','c'.is_after('b'))` always fails because it is
+        // NOT possible to be both 'a' and 'b' before 'c'.
+        // in the same way,
+        // `('c'.is_before('a'), 'b')` always fails because it is
+        // impossible to be both 'a' and 'b' after 'c'.
+        {
+            let re = Regex::from_anre("'a','c'.is_after('b')").unwrap();
+            let text = "ac bc abc bac";
+            let mut matches = re.find_iter(text);
+            assert_eq!(matches.next(), None);
+        }
     }
 
     #[test]
@@ -1487,6 +1499,18 @@ mod tests {
             assert_eq!(matches.next(), Some(new_match(13, 17, "aaaa")));
             assert_eq!(matches.next(), Some(new_match(25, 29, "push")));
             assert_eq!(matches.next(), Some(new_match(37, 41, "fork")));
+            assert_eq!(matches.next(), None);
+        }
+
+        // `('a','c'.is_after('b'))` always fails because it is
+        // NOT possible to be both 'a' and 'b' before 'c'.
+        // in the same way,
+        // `('c'.is_before('a'), 'b')` always fails because it is
+        // impossible to be both 'a' and 'b' after 'c'.
+        {
+            let re = Regex::from_anre("'c'.is_before('a'), 'b'").unwrap();
+            let text = "ca cb cab cba";
+            let mut matches = re.find_iter(text);
             assert_eq!(matches.next(), None);
         }
     }

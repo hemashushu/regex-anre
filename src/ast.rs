@@ -16,6 +16,14 @@ pub enum Expression {
     Literal(Literal),
     BackReference(BackReference),
     AnchorAssertion(AnchorAssertionName),
+
+    /**
+     * `('a','c'.is_after('b'))` always fails because it is
+     * NOT possible to be both 'a' and 'b' before 'c'.
+     * in the same way,
+     * `('c'.is_before('a'), 'b')` always fails because it is
+     * impossible to be both 'a' and 'b' after 'c'.
+     * */
     BoundaryAssertion(BoundaryAssertionName),
 
     /**
@@ -23,11 +31,13 @@ pub enum Expression {
      * ordinary regular expressions.
      * the "group" of ANRE is just a series of parenthesized patterns
      * that are not captured unless called by the 'name' or 'index' function.
+     * in terms of results, the "group" of ANRE is equivalent to the
+     * "non-capturing group" of ordinary regular expressions.
      * e.g.
      * ANRE `('a', 'b', char_word+)` is equivalent to oridinary regex `ab\w+`
      * the "group" of ANRE is used to group patterns and
      * change operator precedence and associativity
-     */
+     * */
     Group(Vec<Expression>),
 
     FunctionCall(Box<FunctionCall>),
@@ -35,7 +45,7 @@ pub enum Expression {
     /**
      * Disjunction
      * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Disjunction
-     */
+     * */
     Or(Box<Expression>, Box<Expression>),
 }
 
@@ -215,7 +225,7 @@ impl Display for FunctionName {
             FunctionName::IsNotBefore => f.write_str("is_not_before"),
             FunctionName::IsNotAfter => f.write_str("is_not_after"),
             FunctionName::Name => f.write_str("name"),
-            FunctionName::Index => f.write_str("capture"),
+            FunctionName::Index => f.write_str("index"),
         }
     }
 }
@@ -293,7 +303,19 @@ impl Display for Expression {
                 write!(f, "({})", lines.join(", "))
             }
             Expression::FunctionCall(e) => write!(f, "{}", e),
-            Expression::Or(left, right) => write!(f, "{} || {}", left, right),
+            Expression::Or(left, right) => {
+                if matches!(left.as_ref(), Expression::Or(_, _)) {
+                    if matches!(right.as_ref(), Expression::Or(_, _)) {
+                        write!(f, "({}) || ({})", left, right)
+                    } else {
+                        write!(f, "({}) || {}", left, right)
+                    }
+                } else if matches!(right.as_ref(), Expression::Or(_, _)) {
+                    write!(f, "{} || ({})", left, right)
+                } else {
+                    write!(f, "{} || {}", left, right)
+                }
+            }
         }
     }
 }

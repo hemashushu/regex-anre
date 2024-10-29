@@ -8,9 +8,9 @@ pub const PARSER_PEEK_TOKEN_MAX_COUNT: usize = 1;
 
 use crate::{
     ast::{
-        AnchorAssertionName, BoundaryAssertionName, CharRange, CharSet, CharSetElement, Expression,
-        FunctionCall, FunctionCallArg, FunctionName, Literal, PresetCharSetName, Program,
-        SpecialCharName,
+        AnchorAssertionName, BackReference, BoundaryAssertionName, CharRange, CharSet,
+        CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
+        PresetCharSetName, Program, SpecialCharName,
     },
     error::Error,
     location::Location,
@@ -107,10 +107,12 @@ impl<'a> Parser<'a> {
             expressions.push(expression);
         }
 
+        // extract elements from a group if the group
+        // contains only one element and the element's type
+        // is 'Group'
         let program = if expressions.len() == 1
             && matches!(expressions.first().unwrap(), Expression::Group(_))
         {
-            // extra expressions from the group 0
             let first = expressions.remove(0);
             if let Expression::Group(exps) = first {
                 Program { expressions: exps }
@@ -261,15 +263,17 @@ impl<'a> Parser<'a> {
                         // `index` can be `pre_index - 2`, because we are confirmed
                         // `pre_index - 1` is not a char.
                         index = pre_index - 1;
-                        continue;
                     }
+                } else {
+                    index -= 1;
                 }
+            } else {
+                index -= 1;
             }
-            index -= 1;
         }
 
+        // escape the group if it contains only one element
         if expressions.len() == 1 {
-            // escape the group if it contains only one element
             let first = expressions.remove(0);
             Ok(first)
         } else {
@@ -361,6 +365,26 @@ impl<'a> Parser<'a> {
                         args,
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
+
+                    self.next_token(); // consume notation
+                }
+                Token::LookAhead | Token::LookAheadNegative => {
+                    let name = match token {
+                        Token::LookAhead => FunctionName::IsBefore,
+                        Token::LookAheadNegative => FunctionName::IsNotBefore,
+                        _ => unreachable!(),
+                    };
+
+                    self.next_token(); // consume "(?=" or "(?!"
+                    let arg0 = self.parse_expression()?;
+                    self.next_token(); // consume ")"
+
+                    let function_call = FunctionCall {
+                        name,
+                        expression: Box::new(expression),
+                        args: vec![FunctionCallArg::Expression(Box::new(arg0))],
+                    };
+                    expression = Expression::FunctionCall(Box::new(function_call));
                 }
                 _ => {
                     break;
@@ -385,38 +409,56 @@ impl<'a> Parser<'a> {
         // - group
         // - back reference
         let expression = match self.peek_token(0).unwrap() {
-            Token::StartAssertion => Expression::AnchorAssertion(AnchorAssertionName::Start),
-            Token::EndAssertion => Expression::AnchorAssertion(AnchorAssertionName::End),
-            Token::BoundaryAssertion(c) => match c {
-                'b' => Expression::BoundaryAssertion(BoundaryAssertionName::IsBound),
-                'B' => Expression::BoundaryAssertion(BoundaryAssertionName::IsNotBound),
-                _ => unreachable!(),
-            },
-            token @ (Token::LookAhead
-            | Token::LookAheadNegative
-            | Token::LookBehind
-            | Token::LookBehindNegative) => {
+            Token::StartAssertion => {
+                self.next_token(); // consume '^'
+                Expression::AnchorAssertion(AnchorAssertionName::Start)
+            }
+            Token::EndAssertion => {
+                self.next_token(); // consume '$'
+                Expression::AnchorAssertion(AnchorAssertionName::End)
+            }
+            Token::BoundaryAssertion(c) => {
+                let ch = *c;
+                self.next_token(); // consume boundary assertion
+
+                match ch {
+                    'b' => Expression::BoundaryAssertion(BoundaryAssertionName::IsBound),
+                    'B' => Expression::BoundaryAssertion(BoundaryAssertionName::IsNotBound),
+                    _ => unreachable!(),
+                }
+            }
+            token @ (Token::LookBehind | Token::LookBehindNegative) => {
                 let name = match token {
-                    Token::LookAhead => FunctionName::IsBefore,
-                    Token::LookAheadNegative => FunctionName::IsNotBefore,
                     Token::LookBehind => FunctionName::IsAfter,
                     Token::LookBehindNegative => FunctionName::IsNotAfter,
                     _ => unreachable!(),
                 };
 
-                self.next_token(); // consume "(?="
-                let expression = self.parse_expression()?;
+                self.next_token(); // consume "(?<=" or "(?<!"
+                let arg0 = self.parse_expression()?;
                 self.next_token(); // consume ")"
+
+                let expression = self.parse_expression()?;
 
                 let function_call = FunctionCall {
                     name,
                     expression: Box::new(expression),
-                    args: vec![],
+                    args: vec![FunctionCallArg::Expression(Box::new(arg0))],
                 };
                 Expression::FunctionCall(Box::new(function_call))
             }
             Token::GroupStart | Token::NonCapturing | Token::NamedCapture(_) => {
                 self.parse_group()?
+            }
+            Token::BackReferenceNumber(index_ref) => {
+                let index = *index_ref;
+                self.next_token(); // consume '\num'
+                Expression::BackReference(BackReference::Index(index))
+            }
+            Token::BackReferenceIdentifier(name_ref) => {
+                let name = name_ref.to_owned();
+                self.next_token(); // consume '\k<name>'
+                Expression::BackReference(BackReference::Name(name))
             }
             _ => {
                 let literal = self.parse_literal()?;
@@ -433,7 +475,9 @@ impl<'a> Parser<'a> {
         // ^                    ^-- to here
         // | current, validated
         //
-        // also "(?:" {expression} ")"
+        // also:
+        // - "(?:" {expression} ")"
+        // - "(?<...>" {expression} ")"
 
         // consume "(", "(?:" or "(?<...>"
         let head_token = self.next_token().unwrap();
@@ -493,15 +537,7 @@ impl<'a> Parser<'a> {
                 Literal::CharSet(charset)
             }
             Token::PresetCharSet(preset_charset_name_ref) => {
-                let preset_charset_name = match preset_charset_name_ref {
-                    'w' => PresetCharSetName::CharWord,
-                    'W' => PresetCharSetName::CharNotWord,
-                    's' => PresetCharSetName::CharSpace,
-                    'S' => PresetCharSetName::CharNotSpace,
-                    'd' => PresetCharSetName::CharDigit,
-                    'D' => PresetCharSetName::CharNotDigit,
-                    _ => unreachable!(),
-                };
+                let preset_charset_name = preset_charset_name_from_char(*preset_charset_name_ref);
                 self.next_token(); // consume preset charset
                 Literal::PresetCharSet(preset_charset_name)
             }
@@ -551,21 +587,13 @@ impl<'a> Parser<'a> {
                         end_included: *to,
                     };
 
-                    self.next_token(); // consume from
-                    self.next_token(); // consume to
+                    self.next_token(); // consume char range
                     elements.push(CharSetElement::CharRange(char_range));
                 }
                 Token::PresetCharSet(preset_charset_name_ref) => {
                     // preset char set
-                    let preset_charset_name = match preset_charset_name_ref {
-                        'w' => PresetCharSetName::CharWord,
-                        'W' => PresetCharSetName::CharNotWord,
-                        's' => PresetCharSetName::CharSpace,
-                        'S' => PresetCharSetName::CharNotSpace,
-                        'd' => PresetCharSetName::CharDigit,
-                        'D' => PresetCharSetName::CharNotDigit,
-                        _ => unreachable!(),
-                    };
+                    let preset_charset_name =
+                        preset_charset_name_from_char(*preset_charset_name_ref);
                     self.next_token(); // consume preset charset
                     elements.push(CharSetElement::PresetCharSet(preset_charset_name));
                 }
@@ -589,6 +617,20 @@ impl<'a> Parser<'a> {
     }
 }
 
+fn preset_charset_name_from_char(name_char: char) -> PresetCharSetName {
+    let name = match name_char {
+        'w' => PresetCharSetName::CharWord,
+        'W' => PresetCharSetName::CharNotWord,
+        's' => PresetCharSetName::CharSpace,
+        'S' => PresetCharSetName::CharNotSpace,
+        'd' => PresetCharSetName::CharDigit,
+        'D' => PresetCharSetName::CharNotDigit,
+        _ => unreachable!(),
+    };
+
+    name
+}
+
 pub fn parse_from_str(s: &str) -> Result<Program, Error> {
     let tokens = lex_from_str(s)?;
     let mut token_iter = tokens.into_iter();
@@ -601,7 +643,13 @@ pub fn parse_from_str(s: &str) -> Result<Program, Error> {
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use crate::ast::{Expression, Literal, PresetCharSetName, Program};
+    use crate::{
+        ast::{
+            CharRange, CharSet, CharSetElement, Expression, Literal, PresetCharSetName, Program,
+        },
+        error::Error,
+        tradition::lexer::lex_from_str,
+    };
 
     use super::parse_from_str;
 
@@ -647,5 +695,208 @@ mod tests {
                 r#""abc", char_digit, "mn", char_digit, 'p', char_digit, "xyz""#
             );
         }
+    }
+
+    #[test]
+    fn test_parse_literal_charset() {
+        let program = parse_from_str(r#"[a0-9\w]"#).unwrap();
+
+        assert_eq!(
+            program,
+            Program {
+                expressions: vec![Expression::Literal(Literal::CharSet(CharSet {
+                    negative: false,
+                    elements: vec![
+                        CharSetElement::Char('a'),
+                        CharSetElement::CharRange(CharRange {
+                            start: '0',
+                            end_included: '9'
+                        }),
+                        CharSetElement::PresetCharSet(PresetCharSetName::CharWord),
+                    ]
+                })),]
+            }
+        );
+
+        assert_eq!(program.to_string(), r#"['a', '0'..'9', char_word]"#);
+
+        // negative
+        assert_eq!(
+            parse_from_str(r#"[^a-z\s]"#,).unwrap().to_string(),
+            r#"!['a'..'z', char_space]"#
+        );
+    }
+
+    #[test]
+    fn test_parse_expression_notations() {
+        assert_eq!(
+            parse_from_str(r#"a?b+c*x??y+?z*?"#,).unwrap().to_string(),
+            r#"optional('a')
+one_or_more('b')
+zero_or_more('c')
+optional_lazy('x')
+one_or_more_lazy('y')
+zero_or_more_lazy('z')"#
+        );
+
+        assert_eq!(
+            parse_from_str(r#"a{3}b{5,7}c{11,}y{5,7}?z{11,}?"#,)
+                .unwrap()
+                .to_string(),
+            r#"repeat('a', 3)
+repeat_range('b', 5, 7)
+at_least('c', 11)
+repeat_range_lazy('y', 5, 7)
+at_least_lazy('z', 11)"#
+        );
+
+        // err: '{m}?' is not allowed
+        assert!(matches!(
+            parse_from_str(r#"a{3}?"#,),
+            Err(Error::MessageWithLocation(_, _))
+        ));
+
+        // err: '{m,m}?' is not allowed
+        assert!(matches!(
+            parse_from_str(r#"a{3,3}?"#,),
+            Err(Error::MessageWithLocation(_, _))
+        ));
+    }
+
+    #[test]
+    fn test_parse_expression_logic_or() {
+        {
+            let program = parse_from_str(r#"a|b"#).unwrap();
+
+            assert_eq!(
+                program,
+                Program {
+                    expressions: vec![Expression::Or(
+                        Box::new(Expression::Literal(Literal::Char('a'))),
+                        Box::new(Expression::Literal(Literal::Char('b'))),
+                    )]
+                }
+            );
+
+            assert_eq!(program.to_string(), r#"'a' || 'b'"#);
+        }
+
+        {
+            let program = parse_from_str(r#"a|b|c"#).unwrap();
+
+            assert_eq!(
+                program,
+                Program {
+                    expressions: vec![Expression::Or(
+                        Box::new(Expression::Literal(Literal::Char('a'))),
+                        Box::new(Expression::Or(
+                            Box::new(Expression::Literal(Literal::Char('b'))),
+                            Box::new(Expression::Literal(Literal::Char('c'))),
+                        )),
+                    )]
+                }
+            );
+
+            assert_eq!(program.to_string(), r#"'a' || ('b' || 'c')"#);
+        }
+
+        assert_eq!(
+            parse_from_str(r#"\d+|[\w-]+"#,).unwrap().to_string(),
+            r#"one_or_more(char_digit) || one_or_more([char_word, '-'])"#
+        );
+    }
+
+    #[test]
+    fn test_parse_expression_group() {
+        // the group of regex is captured by default
+        assert_eq!(
+            parse_from_str(r#"(foo\d)(b(bar\d))$"#,)
+                .unwrap()
+                .to_string(),
+            r#"index(("foo", char_digit))
+index(('b', index(("bar", char_digit))))
+end"#
+        );
+
+        // non-capturing
+        assert_eq!(
+            parse_from_str(r#"(?:foo\d)(?:b(?:bar\d))$"#,)
+                .unwrap()
+                .to_string(),
+            r#"("foo", char_digit), ('b', ("bar", char_digit)), end"#
+        );
+
+        assert_eq!(
+            parse_from_str(r#"(?:foo\d){3}(?:b(?:bar){5})$"#,)
+                .unwrap()
+                .to_string(),
+            r#"repeat(("foo", char_digit), 3)
+('b', repeat("bar", 5)), end"#
+        );
+
+        assert_eq!(
+            parse_from_str(r#"a|(?:b|c)"#,).unwrap().to_string(),
+            r#"'a' || ('b' || 'c')"#
+        );
+
+        assert_eq!(
+            parse_from_str(r#"(?:a|b)|c"#,).unwrap().to_string(),
+            r#"('a' || 'b') || 'c'"#
+        );
+
+        // the implied groups when encounter the logic or operator '|'
+        assert_eq!(
+            parse_from_str(r#"a\w|b\d"#,).unwrap().to_string(),
+            r#"('a', char_word) || ('b', char_digit)"#
+        );
+
+        // extract elements from the top group
+        assert_eq!(
+            parse_from_str(r#"(?:(?:a\db))"#,).unwrap().to_string(),
+            r#"'a', char_digit, 'b'"#
+        );
+    }
+
+    #[test]
+    fn test_parse_expression_anchor_and_boundary_assertions() {
+        assert_eq!(
+            parse_from_str(r#"^ab\bcd\Bef$"#,).unwrap().to_string(),
+            r#"start, "ab", is_bound, "cd", is_not_bound, "ef", end"#
+        );
+    }
+
+    #[test]
+    fn test_parse_expression_named_captured_group_and_back_reference() {
+        assert_eq!(
+            parse_from_str(r#"(?<tag>\w+).+\k<tag>\1"#,)
+                .unwrap()
+                .to_string(),
+            r#"name(one_or_more(char_word), tag)
+one_or_more(char_any)
+tag, ^1"#
+        );
+    }
+
+    #[test]
+    fn test_parse_expression_lookaround_assertion() {
+        assert_eq!(
+            parse_from_str(r#"(?<=a)b"#,).unwrap().to_string(),
+            r#"is_after('b', 'a')"#
+        );
+
+        assert_eq!(
+            parse_from_str(r#"(?<!a)b"#,).unwrap().to_string(),
+            r#"is_not_after('b', 'a')"#
+        );
+
+        assert_eq!(
+            parse_from_str(r#"a(?=b)"#,).unwrap().to_string(),
+            r#"is_before('a', 'b')"#
+        );
+
+        assert_eq!(
+            parse_from_str(r#"a(?!b)"#,).unwrap().to_string(),
+            r#"is_not_before('a', 'b')"#
+        );
     }
 }

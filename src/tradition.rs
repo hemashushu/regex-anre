@@ -4,6 +4,8 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-mod token;
 mod lexer;
 mod parser;
+mod token;
+
+pub use parser::parse_from_str;

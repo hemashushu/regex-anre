@@ -171,7 +171,21 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let program = Program { expressions };
+        // extract elements from a group if the group
+        // contains only one element and the element's type
+        // is 'Group'
+        let program = if expressions.len() == 1
+            && matches!(expressions.first().unwrap(), Expression::Group(_))
+        {
+            let first = expressions.remove(0);
+            if let Expression::Group(exps) = first {
+                Program { expressions: exps }
+            } else {
+                unreachable!()
+            }
+        } else {
+            Program { expressions }
+        };
 
         Ok(program)
     }
@@ -595,7 +609,13 @@ impl<'a> Parser<'a> {
 
         self.expect_token(&Token::RightParen, "right parenthese \")\"")?; // consume ")"
 
-        Ok(Expression::Group(expressions))
+        // escape the group if it contains only one element
+        if expressions.len() == 1 {
+            let first = expressions.remove(0);
+            Ok(first)
+        } else {
+            Ok(Expression::Group(expressions))
+        }
     }
 
     fn parse_function_call(&mut self) -> Result<Expression, Error> {
@@ -1335,7 +1355,7 @@ at_least_lazy('z', 11)"#
                 }
             );
 
-            assert_eq!(program.to_string(), r#"'a' || 'b' || 'c'"#);
+            assert_eq!(program.to_string(), r#"'a' || ('b' || 'c')"#);
         }
 
         assert_eq!(
@@ -1355,26 +1375,28 @@ char_digit.one_or_more() || [char_word, '-']+
         assert_eq!(
             parse_from_str(
                 r#"
-('a', "foo", char_digit)
-('b', ("bar", char_digit), end)
+("foo", char_digit)
+('b', ("bar", char_digit))
+end
 "#,
             )
             .unwrap()
             .to_string(),
-            r#"('a', "foo", char_digit), ('b', ("bar", char_digit), end)"#
+            r#"("foo", char_digit), ('b', ("bar", char_digit)), end"#
         );
 
         assert_eq!(
             parse_from_str(
                 r#"
-repeat(('a', "foo", char_digit), 3)
-('b', repeat("bar", 5), end)
+repeat(("foo", char_digit), 3)
+('b', repeat("bar", 5))
+end
 "#,
             )
             .unwrap()
             .to_string(),
-            r#"repeat(('a', "foo", char_digit), 3)
-('b', repeat("bar", 5), end)"#
+            r#"repeat(("foo", char_digit), 3)
+('b', repeat("bar", 5)), end"#
         );
 
         assert_eq!(
@@ -1386,6 +1408,42 @@ repeat(('a', "foo", char_digit), 3)
             .unwrap()
             .to_string(),
             r#"'a' || ('b' || 'c')"#
+        );
+
+        assert_eq!(
+            parse_from_str(
+                r#"
+('a' || 'b') || 'c'
+"#,
+            )
+            .unwrap()
+            .to_string(),
+            r#"('a' || 'b') || 'c'"#
+        );
+
+        assert_eq!(
+            parse_from_str(
+                r#"
+('a', char_word) || ('b', char_digit)
+"#,
+            )
+            .unwrap()
+            .to_string(),
+            r#"('a', char_word) || ('b', char_digit)"#
+        );
+
+        // extract elements from a group if the group
+        // contains only one element and the element's type
+        // is 'Group'
+        assert_eq!(
+            parse_from_str(
+                r#"
+(('a', char_digit, 'b'))
+"#,
+            )
+            .unwrap()
+            .to_string(),
+            r#"'a', char_digit, 'b'"#
         );
     }
 
@@ -1415,7 +1473,7 @@ start, a, b, c, d, end
             )
             .unwrap()
             .to_string(),
-            r#"start, 'a', ('a', 'b'), (['a', 'c'], optional(('a', 'b')), one_or_more(('a', 'b'))), ('a' || ('a', 'b') || 'd'), end"#
+            r#"start, 'a', ('a', 'b'), (['a', 'c'], optional(('a', 'b')), one_or_more(('a', 'b'))), 'a' || (('a', 'b') || 'd'), end"#
         );
     }
 
@@ -1520,8 +1578,8 @@ start, (ip_num, '.').repeat(3), ip_num, end
             .unwrap()
             .to_string(),
             "start
-repeat((((\"25\", ['0'..'5']) || ('2', ['0'..'4'], char_digit) || ('1', char_digit, char_digit) || (['1'..'9'], char_digit) || char_digit), '.'), 3)
-((\"25\", ['0'..'5']) || ('2', ['0'..'4'], char_digit) || ('1', char_digit, char_digit) || (['1'..'9'], char_digit) || char_digit), end"
+repeat(((\"25\", ['0'..'5']) || (('2', ['0'..'4'], char_digit) || (('1', char_digit, char_digit) || ((['1'..'9'], char_digit) || char_digit))), '.'), 3)
+(\"25\", ['0'..'5']) || (('2', ['0'..'4'], char_digit) || (('1', char_digit, char_digit) || ((['1'..'9'], char_digit) || char_digit))), end"
         );
 
         assert_eq!(
