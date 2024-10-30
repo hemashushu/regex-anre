@@ -1577,9 +1577,9 @@ start, (ip_num, '.').repeat(3), ip_num, end
             )
             .unwrap()
             .to_string(),
-            "start
-repeat(((\"25\", ['0'..'5']) || (('2', ['0'..'4'], char_digit) || (('1', char_digit, char_digit) || ((['1'..'9'], char_digit) || char_digit))), '.'), 3)
-(\"25\", ['0'..'5']) || (('2', ['0'..'4'], char_digit) || (('1', char_digit, char_digit) || ((['1'..'9'], char_digit) || char_digit))), end"
+            r#"start
+repeat((("25", ['0'..'5']) || (('2', ['0'..'4'], char_digit) || (('1', char_digit, char_digit) || ((['1'..'9'], char_digit) || char_digit))), '.'), 3)
+("25", ['0'..'5']) || (('2', ['0'..'4'], char_digit) || (('1', char_digit, char_digit) || ((['1'..'9'], char_digit) || char_digit))), end"#
         );
 
         assert_eq!(
@@ -1598,12 +1598,12 @@ char_any+?                                              // text content
             )
             .unwrap()
             .to_string(),
-            "'<'
+            r#"'<'
 name(one_or_more(char_word), tag_name)
-zero_or_more((char_space, one_or_more(char_word), '=', '\"', one_or_more(char_word), '\"'))
+zero_or_more((char_space, one_or_more(char_word), '=', '"', one_or_more(char_word), '"'))
 '>'
 one_or_more_lazy(char_any)
-'<', '/', tag_name, '>'"
+'<', '/', tag_name, '>'"#
         );
     }
 }

@@ -52,11 +52,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_token_and_equals(&self, offset: usize, expected_token: &Token) -> bool {
-        matches!(
-            self.upstream.peek(offset),
-            Some(TokenWithRange { token, .. }) if token == expected_token)
-    }
+    // fn peek_token_and_equals(&self, offset: usize, expected_token: &Token) -> bool {
+    //     matches!(
+    //         self.upstream.peek(offset),
+    //         Some(TokenWithRange { token, .. }) if token == expected_token)
+    // }
 
     fn expect_token(
         &mut self,
@@ -81,20 +81,20 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect_char(&mut self) -> Result<char, Error> {
-        match self.peek_token(0) {
-            Some(Token::Char(c)) => {
-                let ch = *c;
-                self.next_token();
-                Ok(ch)
-            }
-            Some(_) => Err(Error::MessageWithLocation(
-                "Expect a char.".to_owned(),
-                self.last_range.get_position_by_range_start(),
-            )),
-            None => Err(Error::UnexpectedEndOfDocument("Expect a char.".to_owned())),
-        }
-    }
+    // fn expect_char(&mut self) -> Result<char, Error> {
+    //     match self.peek_token(0) {
+    //         Some(Token::Char(c)) => {
+    //             let ch = *c;
+    //             self.next_token();
+    //             Ok(ch)
+    //         }
+    //         Some(_) => Err(Error::MessageWithLocation(
+    //             "Expect a char.".to_owned(),
+    //             self.last_range.get_position_by_range_start(),
+    //         )),
+    //         None => Err(Error::UnexpectedEndOfDocument("Expect a char.".to_owned())),
+    //     }
+    // }
 }
 
 impl<'a> Parser<'a> {
@@ -618,7 +618,7 @@ impl<'a> Parser<'a> {
 }
 
 fn preset_charset_name_from_char(name_char: char) -> PresetCharSetName {
-    let name = match name_char {
+    match name_char {
         'w' => PresetCharSetName::CharWord,
         'W' => PresetCharSetName::CharNotWord,
         's' => PresetCharSetName::CharSpace,
@@ -626,9 +626,7 @@ fn preset_charset_name_from_char(name_char: char) -> PresetCharSetName {
         'd' => PresetCharSetName::CharDigit,
         'D' => PresetCharSetName::CharNotDigit,
         _ => unreachable!(),
-    };
-
-    name
+    }
 }
 
 pub fn parse_from_str(s: &str) -> Result<Program, Error> {
@@ -648,7 +646,6 @@ mod tests {
             CharRange, CharSet, CharSetElement, Expression, Literal, PresetCharSetName, Program,
         },
         error::Error,
-        tradition::lexer::lex_from_str,
     };
 
     use super::parse_from_str;
@@ -897,6 +894,57 @@ tag, ^1"#
         assert_eq!(
             parse_from_str(r#"a(?!b)"#,).unwrap().to_string(),
             r#"is_not_before('a', 'b')"#
+        );
+    }
+
+    #[test]
+    fn test_parse_examples() {
+        assert_eq!(
+            parse_from_str(r#"\d+"#,).unwrap().to_string(),
+            "one_or_more(char_digit)"
+        );
+
+        assert_eq!(
+            parse_from_str(r#"0x[0-9a-f]+"#,).unwrap().to_string(),
+            "\"0x\"
+one_or_more(['0'..'9', 'a'..'f'])"
+        );
+
+        assert_eq!(
+            parse_from_str(r#"^[\w.-]+(\+[\w-]+)?@([a-zA-Z0-9-]+\.)+[a-z]{2,}$"#,)
+                .unwrap()
+                .to_string(),
+            "start
+one_or_more([char_word, '.', '-'])
+optional(index(('+', one_or_more([char_word, '-']))))
+'@'
+one_or_more(index((one_or_more(['a'..'z', 'A'..'Z', '0'..'9', '-']), '.')))
+at_least(['a'..'z'], 2)
+end"
+        );
+
+        assert_eq!(
+            parse_from_str(
+                r#"^((25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)\.){3}(25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)$"#,
+            )
+            .unwrap()
+            .to_string(),
+            r#"start
+repeat(index((index(("25", ['0'..'5']) || (('2', ['0'..'4'], char_digit) || (('1', char_digit, char_digit) || ((['1'..'9'], char_digit) || char_digit)))), '.')), 3)
+index(("25", ['0'..'5']) || (('2', ['0'..'4'], char_digit) || (('1', char_digit, char_digit) || ((['1'..'9'], char_digit) || char_digit))))
+end"#
+        );
+
+        assert_eq!(
+            parse_from_str(r#"<(?<tag_name>\w+)(\s\w+="\w+")*>.+?</\k<tag_name>>"#,)
+                .unwrap()
+                .to_string(),
+            r#"'<'
+name(one_or_more(char_word), tag_name)
+zero_or_more(index((char_space, one_or_more(char_word), "="", one_or_more(char_word), '"')))
+'>'
+one_or_more_lazy(char_any)
+"</", tag_name, '>'"#
         );
     }
 }

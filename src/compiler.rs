@@ -1028,7 +1028,7 @@ mod tests {
 
     use super::{compile_from_anre, compile_from_regex};
 
-    fn generate_route(anre: &str, regex: &str) -> [Route; 2] {
+    fn generate_routes(anre: &str, regex: &str) -> [Route; 2] {
         [
             compile_from_anre(anre).unwrap(),
             compile_from_regex(regex).unwrap(),
@@ -1038,7 +1038,7 @@ mod tests {
     #[test]
     fn test_compile_char() {
         // single char
-        for route in generate_route(r#"'a'"#, r#"a"#) {
+        for route in generate_routes(r#"'a'"#, r#"a"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1158,7 +1158,7 @@ mod tests {
     #[test]
     fn test_compile_logic_or() {
         // two operands
-        for route in generate_route(r#"'a' || 'b'"#, r#"a|b"#) {
+        for route in generate_routes(r#"'a' || 'b'"#, r#"a|b"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1188,7 +1188,7 @@ mod tests {
         // operator associativity
         // the current interpreter is right-associative, so:
         // "'a' || 'b' || 'c'" => "'a' || ('b' || 'c')"
-        for route in generate_route(r#"'a' || 'b' || 'c'"#, r#"a|b|c"#) {
+        for route in generate_routes(r#"'a' || 'b' || 'c'"#, r#"a|b|c"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1224,7 +1224,7 @@ mod tests {
         }
 
         // use "group" to change associativity
-        for route in generate_route(r#"('a' || 'b') || 'c'"#, r#"(?:a|b)|c"#) {
+        for route in generate_routes(r#"('a' || 'b') || 'c'"#, r#"(?:a|b)|c"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1262,7 +1262,7 @@ mod tests {
         // operator precedence
         // "||" is higher than ","
         // "'a', 'b' || 'c', 'd'" => "'a', ('b' || 'c'), 'd'"
-        for route in generate_route(r#"'a', 'b' || 'c', 'd'"#, r#"a(?:b|c)d"#) {
+        for route in generate_routes(r#"'a', 'b' || 'c', 'd'"#, r#"a(?:b|c)d"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1331,7 +1331,7 @@ mod tests {
 
     #[test]
     fn test_compile_special_char() {
-        for route in generate_route(r#"'a', char_any"#, r#"a."#) {
+        for route in generate_routes(r#"'a', char_any"#, r#"a."#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1356,8 +1356,7 @@ mod tests {
     #[test]
     fn test_compile_preset_charset() {
         // positive preset charset
-        {
-            let route = compile_from_anre(r#"'a', char_word, char_space, char_digit"#).unwrap();
+        for route in generate_routes(r#"'a', char_word, char_space, char_digit"#, r#"a\w\s\d"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1386,9 +1385,10 @@ mod tests {
         }
 
         // negative preset charset
-        {
-            let route =
-                compile_from_anre(r#"'a', char_not_word, char_not_space, char_not_digit"#).unwrap();
+        for route in generate_routes(
+            r#"'a', char_not_word, char_not_space, char_not_digit"#,
+            r#"a\W\S\D"#,
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1420,8 +1420,7 @@ mod tests {
     #[test]
     fn test_compile_charset() {
         // build with char and range
-        {
-            let route = compile_from_anre(r#"['a', '0'..'7']"#).unwrap();
+        for route in generate_routes(r#"['a', '0'..'7']"#, r#"[a0-7]"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1439,8 +1438,7 @@ mod tests {
         }
 
         // negative charset
-        {
-            let route = compile_from_anre(r#"!['a','0'..'7']"#).unwrap();
+        for route in generate_routes(r#"!['a','0'..'7']"#, r#"[^a0-7]"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1458,8 +1456,7 @@ mod tests {
         }
 
         // build with preset charset
-        {
-            let route = compile_from_anre(r#"[char_word, char_space]"#).unwrap();
+        for route in generate_routes(r#"[char_word, char_space]"#, r#"[\w\s]"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1557,8 +1554,7 @@ define(letter, ['a'..'f', char_space])
 
     #[test]
     fn test_compile_assertion() {
-        {
-            let route = compile_from_anre(r#"start, is_bound, 'a'"#).unwrap();
+        for route in generate_routes(r#"start, is_bound, 'a'"#, r#"^\ba"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1586,8 +1582,7 @@ define(letter, ['a'..'f', char_space])
             assert!(route.lines[MAIN_LINE_INDEX].fixed_start_position);
         }
 
-        {
-            let route = compile_from_anre(r#"is_not_bound, 'a', end"#).unwrap();
+        for route in generate_routes(r#"is_not_bound, 'a', end"#, r#"\Ba$"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1635,8 +1630,7 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_capture_group_by_name() {
         // function call, and rear function call
-        {
-            let route = compile_from_anre(r#"name('a', foo), 'b'.name(bar)"#).unwrap();
+        for route in generate_routes(r#"name('a', foo), 'b'.name(bar)"#, r#"(?<foo>a)(?<bar>b)"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1668,9 +1662,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // complex expressions as function call args
-        {
-            let route =
-                compile_from_anre(r#"name(('a', 'b'), foo), ('x' || 'y').name(bar)"#).unwrap();
+        for route in generate_routes(
+            r#"name(('a', char_digit), foo), ('x' || 'y').name(bar)"#,
+            r#"(?<foo>a\d)(?<bar>(?:x|y))"#,
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1681,7 +1676,7 @@ define(letter, ['a'..'f', char_space])
 - 1
   -> 2, Jump
 - 2
-  -> 3, Char 'b'
+  -> 3, Charset ['0'..'9']
 - 3
   -> 5, Capture end {1}
 - 4
@@ -1776,8 +1771,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_capture_group_by_index() {
         // function call, and rear function call
-        {
-            let route = compile_from_anre(r#"index('a'), 'b'.index()"#).unwrap();
+        for route in generate_routes(
+            r#"index('a'), 'b'.index()"#, // anre
+            r#"(a)(b)"#,                  // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1813,8 +1810,10 @@ define(letter, ['a'..'f', char_space])
     // to be completed first
     #[test]
     fn test_compile_backreference() {
-        {
-            let route = compile_from_anre(r#"'a'.name(foo), 'b', foo"#).unwrap();
+        for route in generate_routes(
+            r#"'a'.name(foo), 'b', foo"#, // anre
+            r#"(?<foo>a)b\k<foo>"#,       // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1848,8 +1847,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_optional() {
         // greedy
-        {
-            let route = compile_from_anre(r#"'a'?"#).unwrap();
+        for route in generate_routes(
+            r#"'a'?"#, // anre
+            r#"a?"#,   // regex
+        ) {
             let s = route.get_debug_text();
             // println!("{}", s);
 
@@ -1873,8 +1874,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // lazy
-        {
-            let route = compile_from_anre(r#"'a'??"#).unwrap();
+        for route in generate_routes(
+            r#"'a'??"#, // anre
+            r#"a??"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1900,8 +1903,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_repatition_specified() {
         // repeat >1
-        {
-            let route = compile_from_anre(r#"'a'{2}"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{2}"#, // anre
+            r#"a{2}"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1928,8 +1933,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // repeat 1
-        {
-            let route = compile_from_anre(r#"'a'{1}"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{1}"#, // anre
+            r#"a{1}"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1947,8 +1954,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // repeat 0
-        {
-            let route = compile_from_anre(r#"'a'{0}"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{0}"#, // anre
+            r#"a{0}"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1969,8 +1978,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_repatition_range() {
         // greedy
-        {
-            let route = compile_from_anre(r#"'a'{3,5}"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{3,5}"#, // anre
+            r#"a{3,5}"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1997,8 +2008,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // lazy
-        {
-            let route = compile_from_anre(r#"'a'{3,5}?"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{3,5}?"#, // anre
+            r#"a{3,5}?"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2041,8 +2054,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // {0, m}
-        {
-            let route = compile_from_anre(r#"'a'{0,5}"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{0,5}"#, // anre
+            r#"a{0,5}"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2074,8 +2089,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // {0, m} lazy
-        {
-            let route = compile_from_anre(r#"'a'{0,5}?"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{0,5}?"#, // anre
+            r#"a{0,5}?"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2145,8 +2162,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_repatition_at_least() {
         // {m,}
-        {
-            let route = compile_from_anre(r#"'a'{3,}"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{3,}"#, // anre
+            r#"a{3,}"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2173,8 +2192,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // lazy
-        {
-            let route = compile_from_anre(r#"'a'{3,}?"#).unwrap();
+        for route in generate_routes(
+            r#"'a'{3,}?"#, // anre
+            r#"a{3,}?"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2236,8 +2257,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_notation_optional() {
         // optional
-        {
-            let route = compile_from_anre(r#"'a'?"#).unwrap();
+        for route in generate_routes(
+            r#"'a'?"#, // anre
+            r#"a?"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2260,8 +2283,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // lazy optional
-        {
-            let route = compile_from_anre(r#"'a'??"#).unwrap();
+        for route in generate_routes(
+            r#"'a'??"#, // anre
+            r#"a??"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2287,8 +2312,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_natation_repetition() {
         // one or more
-        {
-            let route = compile_from_anre(r#"'a'+"#).unwrap();
+        for route in generate_routes(
+            r#"'a'+"#, // anre
+            r#"a+"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2315,8 +2342,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // lazy one or more
-        {
-            let route = compile_from_anre(r#"'a'+?"#).unwrap();
+        for route in generate_routes(
+            r#"'a'+?"#, // anre
+            r#"a+?"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2343,8 +2372,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // zero or more
-        {
-            let route = compile_from_anre(r#"'a'*"#).unwrap();
+        for route in generate_routes(
+            r#"'a'*"#, // anre
+            r#"a*"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2376,8 +2407,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // lazy zero or more
-        {
-            let route = compile_from_anre(r#"'a'*?"#).unwrap();
+        for route in generate_routes(
+            r#"'a'*?"#, // anre
+            r#"a*?"#,   // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2412,8 +2445,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_is_before() {
         // positive
-        {
-            let route = compile_from_anre(r#"'a'.is_before("xyz")"#).unwrap();
+        for route in generate_routes(
+            r#"'a'.is_before("xyz")"#, // anre
+            r#"a(?=xyz)"#,             // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2440,8 +2475,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // negative
-        {
-            let route = compile_from_anre(r#"'a'.is_not_before("xyz")"#).unwrap();
+        for route in generate_routes(
+            r#"'a'.is_not_before("xyz")"#, // anre
+            r#"a(?!xyz)"#,                 // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2471,8 +2508,10 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_is_after() {
         // positive
-        {
-            let route = compile_from_anre(r#"'a'.is_after("xyz")"#).unwrap();
+        for route in generate_routes(
+            r#"'a'.is_after("xyz")"#, // anre
+            r#"(?<=xyz)a"#,           // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -2499,8 +2538,10 @@ define(letter, ['a'..'f', char_space])
         }
 
         // negative
-        {
-            let route = compile_from_anre(r#"'a'.is_not_after("xyz")"#).unwrap();
+        for route in generate_routes(
+            r#"'a'.is_not_after("xyz")"#, // anre
+            r#"(?<!xyz)a"#,               // regex
+        ) {
             let s = route.get_debug_text();
 
             assert_str_eq!(

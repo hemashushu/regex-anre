@@ -4,6 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
+mod anre;
 mod ast;
 mod charposition;
 mod compiler;
@@ -16,7 +17,6 @@ mod rulechecker;
 mod tradition;
 mod transition;
 mod utf8reader;
-mod anre;
 
 pub mod process;
 pub mod route;

@@ -7,7 +7,7 @@
 use std::ops::{Index, Range};
 
 use crate::{
-    compiler::compile_from_anre,
+    compiler::{compile_from_anre, compile_from_regex},
     error::Error,
     instance::{Instance, Thread},
     route::{Route, MAIN_LINE_INDEX},
@@ -21,7 +21,7 @@ pub struct Regex {
 
 impl Regex {
     pub fn new(pattern: &str) -> Result<Self, Error> {
-        let route = compile_from_anre(pattern)?;
+        let route = compile_from_regex(pattern)?;
         Ok(Regex { route })
     }
 
@@ -422,11 +422,17 @@ mod tests {
         Captures { matches }
     }
 
+    fn generate_res(anre: &str, regex: &str) -> [Regex; 2] {
+        [Regex::from_anre(anre).unwrap(), Regex::new(regex).unwrap()]
+    }
+
     #[test]
     fn test_process_char() {
         // exists in the middle and at the end of the text
-        {
-            let re = Regex::from_anre("'a'").unwrap();
+        for re in generate_res(
+            "'a'", // anre
+            "a",   // regex
+        ) {
             let mut matches = re.find_iter("babbaa");
 
             assert_eq!(matches.next(), Some(new_match(1, 2, "a")));
@@ -436,8 +442,10 @@ mod tests {
         }
 
         // exists in the middle and at the beginning of the text
-        {
-            let re = Regex::from_anre("'a'").unwrap();
+        for re in generate_res(
+            "'a'", // anre
+            "a",   // regex
+        ) {
             let mut matches = re.find_iter("abaabb");
 
             assert_eq!(matches.next(), Some(new_match(0, 1, "a")));
@@ -447,8 +455,10 @@ mod tests {
         }
 
         // non-existent
-        {
-            let re = Regex::from_anre("'a'").unwrap();
+        for re in generate_res(
+            "'a'", // anre
+            "a",   // regex
+        ) {
             let mut matches = re.find_iter("xyz");
 
             assert_eq!(matches.next(), None);
@@ -458,8 +468,10 @@ mod tests {
     #[test]
     fn test_process_char_with_utf8() {
         // existent
-        {
-            let re = Regex::from_anre("'文'").unwrap();
+        for re in generate_res(
+            "'文'", // anre
+            "文",   // regex
+        ) {
             let mut matches = re.find_iter("abc中文字符文字🌏人文");
 
             assert_eq!(matches.next(), Some(new_match(6, 9, "文")));
@@ -469,8 +481,10 @@ mod tests {
         }
 
         // non-existent
-        {
-            let re = Regex::from_anre("'文'").unwrap();
+        for re in generate_res(
+            "'文'", // anre
+            "文",   // regex
+        ) {
             let mut matches = re.find_iter("abc正则表达式🌏改");
 
             assert_eq!(matches.next(), None);
@@ -480,8 +494,10 @@ mod tests {
     #[test]
     fn test_process_string() {
         // existent
-        {
-            let re = Regex::from_anre("\"abc\"").unwrap();
+        for re in generate_res(
+            r#""abc""#, // anre
+            r#"abc"#,   // regex
+        ) {
             let text = "ababcbcabc";
             let mut matches = re.find_iter(text);
 
@@ -491,8 +507,10 @@ mod tests {
         }
 
         // non-existent
-        {
-            let re = Regex::from_anre("\"abc\"").unwrap();
+        for re in generate_res(
+            r#""abc""#, // anre
+            r#"abc"#,   // regex
+        ) {
             let text = "uvwxyz";
             let mut matches = re.find_iter(text);
 
@@ -502,8 +520,10 @@ mod tests {
 
     #[test]
     fn test_process_string_with_utf8() {
-        {
-            let re = Regex::from_anre("\"文字\"").unwrap();
+        for re in generate_res(
+            r#""文字""#, // anre
+            r#"文字"#,   // regex
+        ) {
             let text = "abc文字文本象形文字🎁表情文字";
             let mut matches = re.find_iter(text);
 
@@ -516,8 +536,10 @@ mod tests {
 
     #[test]
     fn test_process_preset_charset() {
-        {
-            let re = Regex::from_anre("char_word").unwrap();
+        for re in generate_res(
+            r#"char_word"#, // anre
+            r#"\w"#,        // regex
+        ) {
             let text = "a*1**_ **";
             //               "^ ^  ^   "
             let mut matches = re.find_iter(text);
@@ -527,8 +549,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("char_not_word").unwrap();
+        for re in generate_res(
+            r#"char_not_word"#, // anre
+            r#"\W"#,            // regex
+        ) {
             let text = "!a@12 bc_";
             //               "v v  v   "
             let mut matches = re.find_iter(text);
@@ -538,8 +562,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("char_digit").unwrap();
+        for re in generate_res(
+            r#"char_digit"#, // anre
+            r#"\d"#,         // regex
+        ) {
             let text = "1a2b_3de*";
             //               "^ ^  ^   "
             let mut matches = re.find_iter(text);
@@ -549,8 +575,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("char_not_digit").unwrap();
+        for re in generate_res(
+            r#"char_not_digit"#, // anre
+            r#"\D"#,             // regex
+        ) {
             let text = "a1_23 456";
             //               "v v  v   "
             let mut matches = re.find_iter(text);
@@ -560,8 +588,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("char_space").unwrap();
+        for re in generate_res(
+            r#"char_space"#, // anre
+            r#"\s"#,         // regex
+        ) {
             let text = " 1\tab\n_*!";
             //               "^ ^-  ^-   "
             //                012 345 678
@@ -572,8 +602,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("char_not_space").unwrap();
+        for re in generate_res(
+            r#"char_not_space"#, // anre
+            r#"\S"#,             // regex
+        ) {
             let text = "a\t1\r\n*   ";
             //               "v  v    v   "
             //                01 23 4 5678
@@ -588,8 +620,10 @@ mod tests {
     #[test]
     fn test_process_charset() {
         // chars
-        {
-            let re = Regex::from_anre("['a','b','c']").unwrap();
+        for re in generate_res(
+            r#"['a','b','c']"#, // anre
+            r#"[abc]"#,         // regex
+        ) {
             let text = "adbefcghi";
             //               "^ ^  ^   "
             let mut matches = re.find_iter(text);
@@ -600,8 +634,10 @@ mod tests {
         }
 
         // negative
-        {
-            let re = Regex::from_anre("!['a','b','c']").unwrap();
+        for re in generate_res(
+            r#"!['a','b','c']"#, // anre
+            r#"[^abc]"#,         // regex
+        ) {
             let text = "xa1bb*ccc";
             //               "v v  v   "
             let mut matches = re.find_iter(text);
@@ -612,8 +648,10 @@ mod tests {
         }
 
         // range
-        {
-            let re = Regex::from_anre("['a'..'c']").unwrap();
+        for re in generate_res(
+            r#"['a'..'c']"#, // anre
+            r#"[a-c]"#,      // regex
+        ) {
             let text = "adbefcghi";
             //               "^ ^  ^   "
             let mut matches = re.find_iter(text);
@@ -624,8 +662,10 @@ mod tests {
         }
 
         // negative
-        {
-            let re = Regex::from_anre("!['a'..'c']").unwrap();
+        for re in generate_res(
+            r#"!['a'..'c']"#, // anre
+            r#"[^a-c]"#,      // regex
+        ) {
             let text = "xa1bb*ccc";
             //               "v v  v   "
             let mut matches = re.find_iter(text);
@@ -636,8 +676,10 @@ mod tests {
         }
 
         // ranges
-        {
-            let re = Regex::from_anre("['a'..'f', '0'..'9']").unwrap();
+        for re in generate_res(
+            r#"['a'..'f', '0'..'9']"#, // anre
+            r#"[a-f0-9]"#,             // regex
+        ) {
             let text = "am1npfq*_";
             //               "^ ^  ^   "
             let mut matches = re.find_iter(text);
@@ -648,8 +690,10 @@ mod tests {
         }
 
         // negative
-        {
-            let re = Regex::from_anre("!['a'..'f', '0'..'9']").unwrap();
+        for re in generate_res(
+            r#"!['a'..'f', '0'..'9']"#, // anre
+            r#"[^a-f0-9]"#,             // regex
+        ) {
             let text = "man12*def";
             //               "v v  v   "
             let mut matches = re.find_iter(text);
@@ -660,8 +704,10 @@ mod tests {
         }
 
         // combine range with preset
-        {
-            let re = Regex::from_anre("['a'..'f', char_digit]").unwrap();
+        for re in generate_res(
+            r#"['a'..'f', char_digit]"#, // anre
+            r#"[a-f\d]"#,                // regex
+        ) {
             let text = "am1npfq*_";
             //               "^ ^  ^   "
             let mut matches = re.find_iter(text);
@@ -672,8 +718,10 @@ mod tests {
         }
 
         // negative
-        {
-            let re = Regex::from_anre("!['a'..'f', char_digit]").unwrap();
+        for re in generate_res(
+            r#"!['a'..'f', char_digit]"#, // anre
+            r#"[^a-f\d]"#,                // regex
+        ) {
             let text = "man12*def";
             //               "v v  v   "
             let mut matches = re.find_iter(text);
@@ -710,8 +758,10 @@ mod tests {
 
     #[test]
     fn test_process_charset_with_utf8() {
-        {
-            let re = Regex::from_anre("['文','字','🍅']").unwrap();
+        for re in generate_res(
+            r#"['文','字','🍅']"#, // anre
+            r#"[文字🍅]"#,         // regex
+        ) {
             let text = "abc正文写字🍉宋体字体🍅测试🍋";
             let mut matches = re.find_iter(text);
 
@@ -723,8 +773,10 @@ mod tests {
         }
 
         // negative
-        {
-            let re = Regex::from_anre("!['文','字','🍅']").unwrap();
+        for re in generate_res(
+            r#"!['文','字','🍅']"#, // anre
+            r#"[^文字🍅]"#,         // regex
+        ) {
             let text = "哦字文🍅文噢字🍅文文字字喔";
             let mut matches = re.find_iter(text);
 
@@ -737,22 +789,28 @@ mod tests {
 
     #[test]
     fn test_process_special_char() {
-        let re = Regex::from_anre("char_any").unwrap();
-        let text = "\na\r\n1 \n";
-        //               "  ^    ^^  "
-        let mut matches = re.find_iter(text);
+        for re in generate_res(
+            r#"char_any"#, // anre
+            r#"."#,        // regex
+        ) {
+            let text = "\na\r\n1 \n";
+            //               "  ^    ^^  "
+            let mut matches = re.find_iter(text);
 
-        assert_eq!(matches.next(), Some(new_match(1, 2, "a")));
-        assert_eq!(matches.next(), Some(new_match(4, 5, "1")));
-        assert_eq!(matches.next(), Some(new_match(5, 6, " ")));
-        assert_eq!(matches.next(), None);
+            assert_eq!(matches.next(), Some(new_match(1, 2, "a")));
+            assert_eq!(matches.next(), Some(new_match(4, 5, "1")));
+            assert_eq!(matches.next(), Some(new_match(5, 6, " ")));
+            assert_eq!(matches.next(), None);
+        }
     }
 
     #[test]
     fn test_process_group() {
         // anre group = a sequence of patterns
-        {
-            let re = Regex::from_anre("'a', 'b', 'c'").unwrap();
+        for re in generate_res(
+            r#"'a', 'b', 'c'"#, // anre
+            r#"abc"#,           // regex
+        ) {
             let text = "ababcbcabc";
             let mut matches = re.find_iter(text);
 
@@ -761,8 +819,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("'%', char_digit").unwrap();
+        for re in generate_res(
+            r#"'%', char_digit"#, // anre
+            r#"%\d"#,             // regex
+        ) {
             let text = "0123%567%9";
             let mut matches = re.find_iter(text);
 
@@ -771,8 +831,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("['+','-'], ('%', char_digit)").unwrap();
+        for re in generate_res(
+            r#"['+','-'], ('%', char_digit)"#, // anre
+            r#"[+-](%\d)"#,                    // regex
+        ) {
             let text = "%12+%56-%9";
             let mut matches = re.find_iter(text);
 
@@ -784,9 +846,11 @@ mod tests {
 
     #[test]
     fn test_process_logic_or() {
-        // two
-        {
-            let re = Regex::from_anre("'a' || 'b'").unwrap();
+        // two operands
+        for re in generate_res(
+            r#"'a' || 'b'"#, // anre
+            r#"a|b"#,        // regex
+        ) {
             let text = "012a45b7a9";
             let mut matches = re.find_iter(text);
 
@@ -796,9 +860,11 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        // three
-        {
-            let re = Regex::from_anre(r#""abc" || "mn" || "xyz""#).unwrap();
+        // three operands
+        for re in generate_res(
+            r#""abc" || "mn" || "xyz""#, // anre
+            r#"abc|mn|xyz"#,             // regex
+        ) {
             let text = "aabcmmnnxyzz";
             let mut matches = re.find_iter(text);
 
@@ -811,8 +877,10 @@ mod tests {
 
     #[test]
     fn test_process_start_and_end_assertion() {
-        {
-            let re = Regex::from_anre("start, 'a'").unwrap();
+        for re in generate_res(
+            r#"start, 'a'"#, // anre
+            r#"^a"#,         // regex
+        ) {
             let text = "ab";
             let mut matches = re.find_iter(text);
 
@@ -820,24 +888,30 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("'a', end").unwrap();
+        for re in generate_res(
+            r#"'a', end"#, // anre
+            r#"a$"#,       // regex
+        ) {
             let text = "ab";
             let mut matches = re.find_iter(text);
 
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("start, 'a'").unwrap();
+        for re in generate_res(
+            r#"start, 'a'"#, // anre
+            r#"^a"#,         // regex
+        ) {
             let text = "ba";
             let mut matches = re.find_iter(text);
 
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("'a', end").unwrap();
+        for re in generate_res(
+            r#"'a', end"#, // anre
+            r#"a$"#,       // regex
+        ) {
             let text = "ba";
             let mut matches = re.find_iter(text);
 
@@ -846,8 +920,10 @@ mod tests {
         }
 
         // both 'start' and 'end'
-        {
-            let re = Regex::from_anre("start, 'a', end").unwrap();
+        for re in generate_res(
+            r#"start, 'a', end"#, // anre
+            r#"^a$"#,             // regex
+        ) {
             let text = "a";
             let mut matches = re.find_iter(text);
 
@@ -856,8 +932,10 @@ mod tests {
         }
 
         // both 'start' and 'end' - failed 1
-        {
-            let re = Regex::from_anre("start, 'a', end").unwrap();
+        for re in generate_res(
+            r#"start, 'a', end"#, // anre
+            r#"^a$"#,             // regex
+        ) {
             let text = "ab";
             let mut matches = re.find_iter(text);
 
@@ -865,8 +943,10 @@ mod tests {
         }
 
         // both 'start' and 'end' - failed 2
-        {
-            let re = Regex::from_anre("start, 'a', end").unwrap();
+        for re in generate_res(
+            r#"start, 'a', end"#, // anre
+            r#"^a$"#,             // regex
+        ) {
             let text = "ba";
             let mut matches = re.find_iter(text);
 
@@ -877,8 +957,10 @@ mod tests {
     #[test]
     fn test_process_boundary_assertion() {
         // matching 'boundary + char'
-        {
-            let re = Regex::from_anre("is_bound, 'a'").unwrap();
+        for re in generate_res(
+            r#"is_bound, 'a'"#, // anre
+            r#"\ba"#,           // regex
+        ) {
             let text = "ab";
             let mut matches = re.find_iter(text);
 
@@ -886,8 +968,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("is_bound, 'a'").unwrap();
+        for re in generate_res(
+            r#"is_bound, 'a'"#, // anre
+            r#"\ba"#,           // regex
+        ) {
             let text = "a";
             let mut matches = re.find_iter(text);
 
@@ -895,8 +979,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("is_bound, 'a'").unwrap();
+        for re in generate_res(
+            r#"is_bound, 'a'"#, // anre
+            r#"\ba"#,           // regex
+        ) {
             let text = " a";
             let mut matches = re.find_iter(text);
 
@@ -904,8 +990,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("is_bound, 'a'").unwrap();
+        for re in generate_res(
+            r#"is_bound, 'a'"#, // anre
+            r#"\ba"#,           // regex
+        ) {
             let text = "ba";
             let mut matches = re.find_iter(text);
 
@@ -913,8 +1001,10 @@ mod tests {
         }
 
         // matching 'char + boundary'
-        {
-            let re = Regex::from_anre("'a', is_bound").unwrap();
+        for re in generate_res(
+            r#"'a', is_bound"#, // anre
+            r#"a\b"#,           // regex
+        ) {
             let text = "ba";
             let mut matches = re.find_iter(text);
 
@@ -922,8 +1012,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("'a', is_bound").unwrap();
+        for re in generate_res(
+            r#"'a', is_bound"#, // anre
+            r#"a\b"#,           // regex
+        ) {
             let text = "a";
             let mut matches = re.find_iter(text);
 
@@ -931,8 +1023,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("'a', is_bound").unwrap();
+        for re in generate_res(
+            r#"'a', is_bound"#, // anre
+            r#"a\b"#,           // regex
+        ) {
             let text = "a ";
             let mut matches = re.find_iter(text);
 
@@ -940,8 +1034,10 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre("'a', is_bound").unwrap();
+        for re in generate_res(
+            r#"'a', is_bound"#, // anre
+            r#"a\b"#,           // regex
+        ) {
             let text = "ab";
             let mut matches = re.find_iter(text);
 
@@ -952,8 +1048,11 @@ mod tests {
     #[test]
     fn test_process_optional() {
         // char optional
-        {
-            let re = Regex::from_anre("'a', 'b'?, 'c'").unwrap();
+        for re in generate_res(
+            r#"'a', 'b'?, 'c'"#, // anre
+            r#"ab?c"#,           // regex
+        ) {
+            // let re = Regex::from_anre("'a', 'b'?, 'c'").unwrap();
             let text = "ababccbacabc";
             //               "  ^^^  ^^vvv"
             let mut matches = re.find_iter(text);
@@ -965,8 +1064,11 @@ mod tests {
         }
 
         // char optional - greedy
-        {
-            let re = Regex::from_anre("'a', 'b', 'c'?").unwrap();
+        for re in generate_res(
+            r#"'a', 'b', 'c'?"#, // anre
+            r#"abc?"#,           // regex
+        ) {
+            // let re = Regex::from_anre("'a', 'b', 'c'?").unwrap();
             let text = "abcabx";
             //               "^^^vv"
             let mut matches = re.find_iter(text);
@@ -977,8 +1079,11 @@ mod tests {
         }
 
         // char optional - lazy
-        {
-            let re = Regex::from_anre("'a', 'b', 'c'??").unwrap();
+        for re in generate_res(
+            r#"'a', 'b', 'c'??"#, // anre
+            r#"abc??"#,           // regex
+        ) {
+            // let re = Regex::from_anre("'a', 'b', 'c'??").unwrap();
             let text = "abcabx";
             //               "^^ ^^ "
             let mut matches = re.find_iter(text);
@@ -989,8 +1094,11 @@ mod tests {
         }
 
         // group optional
-        {
-            let re = Regex::from_anre("'a', ('b','c')?, 'd'").unwrap();
+        for re in generate_res(
+            r#"'a', ('b','c')?, 'd'"#, // anre
+            r#"a(bc)?d"#,              // regex
+        ) {
+            // let re = Regex::from_anre("'a', ('b','c')?, 'd'").unwrap();
             let text = "abcabdacdabcdabacad";
             //               "         ^^^^    ^^"
             let mut matches = re.find_iter(text);
@@ -1004,8 +1112,11 @@ mod tests {
     #[test]
     fn test_process_repetition_specified() {
         // char repetition
-        {
-            let re = Regex::from_anre("'a'{3}").unwrap();
+        for re in generate_res(
+            r#"'a'{3}"#, // anre
+            r#"a{3}"#,   // regex
+        ) {
+            // let re = Regex::from_anre("'a'{3}").unwrap();
             let text = "abaabbaaabbbaaaaa";
             //               "      ^^^   ^^^  "
             let mut matches = re.find_iter(text);
@@ -1016,8 +1127,11 @@ mod tests {
         }
 
         // charset repetition
-        {
-            let re = Regex::from_anre("char_digit{3}").unwrap();
+        for re in generate_res(
+            r#"char_digit{3}"#, // anre
+            r#"\d{3}"#,         // regex
+        ) {
+            // let re = Regex::from_anre("char_digit{3}").unwrap();
             let text = "a1ab12abc123abcd1234";
             //               "         ^^^    ^^^ "
             let mut matches = re.find_iter(text);
@@ -1028,8 +1142,11 @@ mod tests {
         }
 
         // group repetition
-        {
-            let re = Regex::from_anre("('a','b'){3}").unwrap();
+        for re in generate_res(
+            r#"('a','b'){3}"#, // anre
+            r#"(ab){3}"#,      // regex
+        ) {
+            // let re = Regex::from_anre("('a','b'){3}").unwrap();
             let text = "abbaababbaababababab";
             //               "          ^^^^^^    "
             let mut matches = re.find_iter(text);
@@ -1039,8 +1156,11 @@ mod tests {
         }
 
         // repetition + other pattern
-        {
-            let re = Regex::from_anre("'a'{2}, char_digit").unwrap();
+        for re in generate_res(
+            r#"'a'{2}, char_digit"#, // anre
+            r#"a{2}\d"#,             // regex
+        ) {
+            // let re = Regex::from_anre("'a'{2}, char_digit").unwrap();
             let text = "abaabbaa1bb1aa123bb123a11b11";
             //               "      ^^^   ^^^             "
             let mut matches = re.find_iter(text);
@@ -1054,8 +1174,11 @@ mod tests {
     #[test]
     fn test_process_repetition_range() {
         // char repetition
-        {
-            let re = Regex::from_anre("'a'{1,3}").unwrap();
+        for re in generate_res(
+            r#"'a'{1,3}"#, // anre
+            r#"a{1,3}"#,   // regex
+        ) {
+            // let re = Regex::from_anre("'a'{1,3}").unwrap();
             let text = "abaabbaaabbbaaaabbbb";
             //               "^ ^^  ^^^   ^^^v    "
             let mut matches = re.find_iter(text);
@@ -1069,8 +1192,11 @@ mod tests {
         }
 
         // char repetition lazy
-        {
-            let re = Regex::from_anre("'a'{1,3}?").unwrap();
+        for re in generate_res(
+            r#"'a'{1,3}?"#, // anre
+            r#"a{1,3}?"#,   // regex
+        ) {
+            // let re = Regex::from_anre("'a'{1,3}?").unwrap();
             let text = "abaabbaaabbbaaaabbbb";
             //               "^ ^v  ^v^   ^v^v    "
             let mut matches = re.find_iter(text);
@@ -1084,8 +1210,11 @@ mod tests {
         }
 
         // char repetition - to MAX
-        {
-            let re = Regex::from_anre("'a'{2,}").unwrap();
+        for re in generate_res(
+            r#"'a'{2,}"#, // anre
+            r#"a{2,}"#,   // regex
+        ) {
+            // let re = Regex::from_anre("'a'{2,}").unwrap();
             let text = "abaabbaaabbbaaaabbbb";
             //               "  ^^  ^^^   ^^^^    "
             let mut matches = re.find_iter(text);
@@ -1097,8 +1226,11 @@ mod tests {
         }
 
         // char repetition - to MAX - lazy
-        {
-            let re = Regex::from_anre("'a'{2,}?").unwrap();
+        for re in generate_res(
+            r#"'a'{2,}?"#, // anre
+            r#"a{2,}?"#,   // regex
+        ) {
+            // let re = Regex::from_anre("'a'{2,}?").unwrap();
             let text = "abaabbaaabbbaaaabbbb";
             //               "  ^^  ^^    ^^vv    "
             let mut matches = re.find_iter(text);
@@ -1114,8 +1246,11 @@ mod tests {
     #[test]
     fn test_process_optional_and_repetition_range() {
         // implicit
-        {
-            let re = Regex::from_anre("'a', 'b'{0,3}, 'c'").unwrap();
+        for re in generate_res(
+            r#"'a', 'b'{0,3}, 'c'"#, // anre
+            r#"ab{0,3}c"#,           // regex
+        ) {
+            // let re = Regex::from_anre("'a', 'b'{0,3}, 'c'").unwrap();
             let text = "acaabcaabbcaabbbcaabbbbc";
             //               "^^ ^^^ ^^^^ ^^^^^       "
             let mut matches = re.find_iter(text);
@@ -1128,8 +1263,11 @@ mod tests {
         }
 
         // explicit
-        {
-            let re = Regex::from_anre("'a', ('b'{2,3})?, 'c'").unwrap();
+        for re in generate_res(
+            r#"'a', ('b'{2,3})?, 'c'"#, // anre
+            r#"a(b{2,3})?c"#,           // regex
+        ) {
+            // let re = Regex::from_anre("'a', ('b'{2,3})?, 'c'").unwrap();
             let text = "acaabcaabbcaabbbcaabbbbc";
             //               "^^     ^^^^ ^^^^^       "
             let mut matches = re.find_iter(text);
@@ -1141,8 +1279,11 @@ mod tests {
         }
 
         // repetition specified
-        {
-            let re = Regex::from_anre("'a', ('b'{2})?, 'c'").unwrap();
+        for re in generate_res(
+            r#"'a', ('b'{2})?, 'c'"#, // anre
+            r#"a(b{2})?c"#,           // regex
+        ) {
+            // let re = Regex::from_anre("'a', ('b'{2})?, 'c'").unwrap();
             let text = "acaabcaabbcaabbbcaabbbbc";
             //               "^^     ^^^^             "
             let mut matches = re.find_iter(text);
@@ -1156,8 +1297,11 @@ mod tests {
     #[test]
     fn test_process_repetition_char_any() {
         // repetition specified
-        {
-            let re = Regex::from_anre("char_any{3}").unwrap();
+        for re in generate_res(
+            r#"char_any{3}"#, // anre
+            r#".{3}"#,        // regex
+        ) {
+            // let re = Regex::from_anre("char_any{3}").unwrap();
             let text = "abcdefgh";
             //               "^^^vvv  "
             let mut matches = re.find_iter(text);
@@ -1168,8 +1312,11 @@ mod tests {
         }
 
         // repetition range - to MAX
-        {
-            let re = Regex::from_anre("char_any+").unwrap();
+        for re in generate_res(
+            r#"char_any+"#, // anre
+            r#".+"#,        // regex
+        ) {
+            // let re = Regex::from_anre("char_any+").unwrap();
             let text = "abcdefg";
             let mut matches = re.find_iter(text);
 
@@ -1181,8 +1328,11 @@ mod tests {
     #[test]
     fn test_process_repetition_backtracking() {
         // backtracking
-        {
-            let re = Regex::from_anre("start, 'a', char_any+, 'c'").unwrap();
+        for re in generate_res(
+            r#"start, 'a', char_any+, 'c'"#, // anre
+            r#"^a.+c"#,                      // regex
+        ) {
+            // let re = Regex::from_anre("start, 'a', char_any+, 'c'").unwrap();
             let text = "abbcmn";
             //               "^^^^  "
             let mut matches = re.find_iter(text);
@@ -1192,8 +1342,11 @@ mod tests {
 
         // backtracking - failed
         // because there is no char between 'a' and 'c'
-        {
-            let re = Regex::from_anre("start, 'a', char_any+, 'c'").unwrap();
+        for re in generate_res(
+            r#"start, 'a', char_any+, 'c'"#, // anre
+            r#"^a.+c"#,                      // regex
+        ) {
+            // let re = Regex::from_anre("start, 'a', char_any+, 'c'").unwrap();
             let text = "acmn";
             let mut matches = re.find_iter(text);
             assert_eq!(matches.next(), None);
@@ -1201,16 +1354,22 @@ mod tests {
 
         // backtracking - failed
         // because there is not enough char between 'a' and 'c'
-        {
-            let re = Regex::from_anre("start, 'a', char_any{3,}, 'c'").unwrap();
+        for re in generate_res(
+            r#"start, 'a', char_any{3,}, 'c'"#, // anre
+            r#"^a.{3,}c"#,                      // regex
+        ) {
+            // let re = Regex::from_anre("start, 'a', char_any{3,}, 'c'").unwrap();
             let text = "abbcmn";
             let mut matches = re.find_iter(text);
             assert_eq!(matches.next(), None);
         }
 
         // lazy repetition - no backtracking
-        {
-            let re = Regex::from_anre("'a', char_any+?, 'c'").unwrap();
+        for re in generate_res(
+            r#"'a', char_any+?, 'c'"#, // anre
+            r#"a.+?c"#,                // regex
+        ) {
+            // let re = Regex::from_anre("'a', char_any+?, 'c'").unwrap();
             let text = "abbcmn";
             //               "^^^^  "
             let mut matches = re.find_iter(text);
@@ -1219,8 +1378,11 @@ mod tests {
         }
 
         // nested backtracking
-        {
-            let re = Regex::from_anre("start, 'a', char_any{2,}, 'c', char_any{2,}, 'e'").unwrap();
+        for re in generate_res(
+            r#"start, 'a', char_any{2,}, 'c', char_any{2,}, 'e'"#, // anre
+            r#"^a.{2,}c.{2,}e"#,                                   // regex
+        ) {
+            // let re = Regex::from_anre("start, 'a', char_any{2,}, 'c', char_any{2,}, 'e'").unwrap();
             let text = "a88c88ewwefg";
             let mut matches = re.find_iter(text);
             assert_eq!(matches.next(), Some(new_match(0, 10, "a88c88ewwe")));
@@ -1231,9 +1393,12 @@ mod tests {
     #[test]
     fn test_process_capture() {
         // index
-        {
-            let re = Regex::from_anre(r#"("0x" || "0o" || "0b").index(), (char_digit+).index()"#)
-                .unwrap();
+        for re in generate_res(
+            r#"("0x" || "0o" || "0b").index(), (char_digit+).index()"#, // anre
+            r#"(0x|0o|0b)(\d+)"#,                                       // regex
+        ) {
+            // let re = Regex::from_anre(r#"("0x" || "0o" || "0b").index(), (char_digit+).index()"#)
+            //     .unwrap();
             let text = "abc0x23def0o456xyz";
 
             let mut matches = re.captures_iter(text);
@@ -1258,11 +1423,14 @@ mod tests {
         }
 
         // named
-        {
-            let re = Regex::from_anre(
-                r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#,
-            )
-            .unwrap();
+        for re in generate_res(
+            r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#, // anre
+            r#"(?<prefix>0x|0o|0b)(?<number>\d+)"#,                               // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#,
+            // )
+            // .unwrap();
             let text = "abc0x23def0o456xyz";
 
             let mut matches = re.captures_iter(text);
@@ -1287,11 +1455,14 @@ mod tests {
         }
 
         // named - by Regex::captures_iter(...)
-        {
-            let re = Regex::from_anre(
-                r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#,
-            )
-            .unwrap();
+        for re in generate_res(
+            r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#, // anre
+            r#"(?<prefix>0x|0o|0b)(?<number>\d+)"#,                               // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#,
+            // )
+            // .unwrap();
             let text = "abc0x23def0o456xyz";
 
             let mut matches = re.captures_iter(text);
@@ -1322,11 +1493,14 @@ mod tests {
         }
 
         // named - by Regex::find_iter(...)
-        {
-            let re = Regex::from_anre(
-                r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#,
-            )
-            .unwrap();
+        for re in generate_res(
+            r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#, // anre
+            r#"(?<prefix>0x|0o|0b)(?<number>\d+)"#,                               // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#,
+            // )
+            // .unwrap();
             let text = "abc0x23def0o456xyz";
 
             let mut matches = re.find_iter(text);
@@ -1343,15 +1517,22 @@ mod tests {
 
     #[test]
     fn test_process_backreference() {
-        {
-            let re = Regex::from_anre(
-                r#"
-            ('<', (char_word+).name(tag), '>'),
+        for re in generate_res(
+            r#"
+            ('<', (char_word+).name(tag_name), '>'),
             char_any+,
-            ("</", tag, '>')
-            "#,
-            )
-            .unwrap();
+            ("</", tag_name, '>')
+            "#, // anre
+            r#"<(?<tag_name>\w+)>.+</\k<tag_name>>"#, // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"
+            // ('<', (char_word+).name(tag_name), '>'),
+            // char_any+,
+            // ("</", tag_name, '>')
+            // "#,
+            // )
+            // .unwrap();
             let text = "zero<div>one<div>two</div>three</div>four";
             let mut matches = re.captures_iter(text);
 
@@ -1359,21 +1540,28 @@ mod tests {
                 matches.next(),
                 Some(new_captures(&[
                     (4, 37, None, "<div>one<div>two</div>three</div>"),
-                    (5, 8, Some("tag"), "div")
+                    (5, 8, Some("tag_name"), "div")
                 ]))
             );
         }
 
         // backreference + lazy
-        {
-            let re = Regex::from_anre(
-                r#"
-            ('<', (char_word+).name(tag), '>'),
+        for re in generate_res(
+            r#"
+            ('<', (char_word+).name(tag_name), '>'),
             char_any+?,
-            ("</", tag, '>')
-            "#,
-            )
-            .unwrap();
+            ("</", tag_name, '>')
+            "#, // anre
+            r#"<(?<tag_name>\w+)>.+?</\k<tag_name>>"#, // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"
+            // ('<', (char_word+).name(tag), '>'),
+            // char_any+?,
+            // ("</", tag, '>')
+            // "#,
+            // )
+            // .unwrap();
             let text = "zero<div>one<div>two</div>three</div>four";
             let mut matches = re.captures_iter(text);
 
@@ -1381,7 +1569,7 @@ mod tests {
                 matches.next(),
                 Some(new_captures(&[
                     (4, 26, None, "<div>one<div>two</div>"),
-                    (5, 8, Some("tag"), "div")
+                    (5, 8, Some("tag_name"), "div")
                 ]))
             );
         }
@@ -1389,8 +1577,11 @@ mod tests {
 
     #[test]
     fn test_process_lookbehind() {
-        {
-            let re = Regex::from_anre("char_digit.is_after(['a'..'f'])").unwrap();
+        for re in generate_res(
+            r#"char_digit.is_after(['a'..'f'])"#, // anre
+            r#"(?<=[a-f])\d"#,                    // regex
+        ) {
+            // let re = Regex::from_anre("char_digit.is_after(['a'..'f'])").unwrap();
             let text = "a1 22 f9 cc z3 b2";
             let mut matches = re.find_iter(text);
 
@@ -1400,15 +1591,22 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre(
-                r#"
+        for re in generate_res(
+            r#"
             [char_digit, 'a'..'f']
                 .repeat(2)
                 .is_after("0x")
-            "#,
-            )
-            .unwrap();
+            "#, // anre
+            r#"(?<=0x)[\da-f]{2}"#, // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"
+            // [char_digit, 'a'..'f']
+            //     .repeat(2)
+            //     .is_after("0x")
+            // "#,
+            // )
+            // .unwrap();
             let text = "13 0x17 0o19 0x23 29";
             let mut matches = re.find_iter(text);
 
@@ -1418,15 +1616,22 @@ mod tests {
         }
 
         // negative
-        {
-            let re = Regex::from_anre(
-                r#"
+        for re in generate_res(
+            r#"
             [char_digit, 'a'..'f']
                 .repeat(2)
                 .is_not_after("0x")
-            "#,
-            )
-            .unwrap();
+            "#, // anre
+            r#"(?<!0x)[\da-f]{2}"#, // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"
+            // [char_digit, 'a'..'f']
+            //     .repeat(2)
+            //     .is_not_after("0x")
+            // "#,
+            // )
+            // .unwrap();
             let text = "13 0x17 0o19 0x23 29";
             let mut matches = re.find_iter(text);
 
@@ -1441,8 +1646,13 @@ mod tests {
         // in the same way,
         // `('c'.is_before('a'), 'b')` always fails because it is
         // impossible to be both 'a' and 'b' after 'c'.
-        {
-            let re = Regex::from_anre("'a','c'.is_after('b')").unwrap();
+        for re in generate_res(
+            r#"
+            'a','c'.is_after('b')
+            "#, // anre
+            r#"a(?<=b)c"#, // regex
+        ) {
+            // let re = Regex::from_anre("'a','c'.is_after('b')").unwrap();
             let text = "ac bc abc bac";
             let mut matches = re.find_iter(text);
             assert_eq!(matches.next(), None);
@@ -1451,8 +1661,11 @@ mod tests {
 
     #[test]
     fn test_process_lookahead() {
-        {
-            let re = Regex::from_anre("is_bound, ['a'..'f'].is_before(char_digit)").unwrap();
+        for re in generate_res(
+            r#"is_bound, ['a'..'f'].is_before(char_digit)"#, // anre
+            r#"\b[a-f](?=\d)"#,                              // regex
+        ) {
+            // let re = Regex::from_anre("is_bound, ['a'..'f'].is_before(char_digit)").unwrap();
             let text = "a1 22 f9 cc z3 b2";
             let mut matches = re.find_iter(text);
 
@@ -1462,16 +1675,24 @@ mod tests {
             assert_eq!(matches.next(), None);
         }
 
-        {
-            let re = Regex::from_anre(
-                r#"
-                is_bound
+        for re in generate_res(
+            r#"
+            is_bound
                 ['a'..'z']
                     .at_least(2)
                     .is_before("ing" || "ed")
-                "#,
-            )
-            .unwrap();
+            "#, // anre
+            r#"\b[a-z]{2,}(?=ing|ed)"#, // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"
+            //     is_bound
+            //     ['a'..'z']
+            //         .at_least(2)
+            //         .is_before("ing" || "ed")
+            //     "#,
+            // )
+            // .unwrap();
             let text = "jump jumping aaaabbbbing push pushed fork";
             let mut matches = re.find_iter(text);
 
@@ -1482,16 +1703,24 @@ mod tests {
         }
 
         // negative
-        {
-            let re = Regex::from_anre(
-                r#"
+        for re in generate_res(
+            r#"
                 is_bound
                 ['a'..'z']
                     .repeat(4)
                     .is_not_before("ing" || "ed")
-                "#,
-            )
-            .unwrap();
+            "#, // anre
+            r#"\b[a-z]{4}(?!ing|ed)"#, // regex
+        ) {
+            // let re = Regex::from_anre(
+            //     r#"
+            //     is_bound
+            //     ['a'..'z']
+            //         .repeat(4)
+            //         .is_not_before("ing" || "ed")
+            //     "#,
+            // )
+            // .unwrap();
             let text = "jump jumping aaaabbbbing push pushed fork";
             let mut matches = re.find_iter(text);
 
@@ -1507,8 +1736,13 @@ mod tests {
         // in the same way,
         // `('c'.is_before('a'), 'b')` always fails because it is
         // impossible to be both 'a' and 'b' after 'c'.
-        {
-            let re = Regex::from_anre("'c'.is_before('a'), 'b'").unwrap();
+        for re in generate_res(
+            r#"
+            'c'.is_before('a'), 'b'
+            "#, // anre
+            r#"c(?=a)b"#, // regex
+        ) {
+            // let re = Regex::from_anre("'c'.is_before('a'), 'b'").unwrap();
             let text = "ca cb cab cba";
             let mut matches = re.find_iter(text);
             assert_eq!(matches.next(), None);
