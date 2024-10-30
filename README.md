@@ -1,42 +1,46 @@
-# Regex - ANRE Edition
+# Regex ANRE
 
 _ANRE_ is a brand new regex language that offers all the capabilities of traditional regex but in much simpler form.
 
 Designed with user-friendliness in mind, _ANRE_ requires no prior knowledge to get started and can be seamlessly converted to and from traditional regex.
 
-(Note: ANRE is short for _XiaoXuan Regular Expression_)
+(_ANRE_ is short for _XiaoXuan Regular Expression_)
 
-[regex-anre](https://github.com/hemashushu/regex-anre) is a lightweight engine (interpreter) for ANRE.
+[regex-anre](https://github.com/hemashushu/regex-anre) is a lightweight (zero dependency) but comprehensive regular expression engine, it supports both standard regular expression and the ANRE language. It also supports JIT and has excellent performance.
+
+`regex-anre` provides the same API as [the Rust standard regex](https://docs.rs/regex/), you can directly use `regex-anre` to replace the standard regex without changing the existing code.
 
 <!-- @import "[TOC]" {cmd="toc" depthFrom=2 depthTo=4 orderedList=false} -->
 
 <!-- code_chunk_output -->
 
-- [Getting Started in 30 Minutes](#getting-started-in-30-minutes)
-- [Motivation](#motivation)
-- [Quick Start by Examples](#quick-start-by-examples)
-- [Comparison with Traditional Regex](#comparison-with-traditional-regex)
-- [The ANRE Language Reference](#the-anre-language-reference)
-- [How the ANRE Engine Works](#how-the-anre-engine-works)
-- [The Library](#the-library)
-- [Resource](#resource)
+- [Features](#features)
+- [Quick Start](#quick-start)
 
 <!-- /code_chunk_output -->
 
-## Getting Started in 30 Minutes
+## Features
 
-_ANRE_ can be considered as a programming language that consists only of literals and functions, without variables and control flow. Its primary purpose is to search for strings within a large of text that match a specified pattern, or to valify whether a given text conforms to a particular pattern.
+- **Lightweight** The library [regex-anre](https://github.com/hemashushu/regex-anre) has no dependencies.
+- **Comprehensive** Supports most regex features, including back-reference, look-ahead and look-behind assertions.
+- **High performance** The JIT edition [regex-jit](https://github.com/hemashushu/regex-anre) provides excellent performance.
 
-## Motivation
+## Quick Start
 
-## Quick Start by Examples
+```rust
+use regex_anre::Regex;
 
-## Comparison with Traditional Regex
+let re = Regex::new("...").unwrap();
 
-## The ANRE Language Reference
+// or, create a regex using ANRE language:
+// let re = Regex::from_anre("...").unwrap();
 
-## How the ANRE Engine Works
+let mut matches = re.find_iter("...");
+for m in matches {
+    println("{}", m.as_str());
+}
+```
 
-## The Library
+See https://docs.rs/regex/latest/regex/ for details.
 
-## Resource
+TODO

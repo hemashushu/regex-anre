@@ -1,10 +1,10 @@
 [package]
 name = "regex-anre"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 license = "MPL-2.0"
-description = "regex-anre is a brand new regex engine for Rust with JIT and ANRE language support."
+description = "regex-anre is a brand new and comprehensive regex engine for Rust with JIT and ANRE language support."
 homepage = "https://hemashushu.github.io/works/anre"
 documentation = "https://hemashushu.github.io/works/anre"
 repository = "https://github.com/hemashushu/regex-anre"
