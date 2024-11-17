@@ -4,29 +4,40 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::peekableiter::PeekableIter;
-
 use super::token::{Token, TokenWithRange};
 
 pub fn clean(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
     // remove all comments.
-    let mut token_iter = tokens.into_iter();
-    let peekable_token_iter = PeekableIter::new(&mut token_iter, 1);
-    let mut clean_tokens: Vec<TokenWithRange> = vec![];
+    let clean_tokens: Vec<TokenWithRange> = tokens
+        .into_iter()
+        .filter(|e| {
+            !matches!(
+                e,
+                TokenWithRange {
+                    token: Token::Comment(_),
+                    ..
+                }
+            )
+        })
+        .collect();
 
-    for tr in peekable_token_iter {
-        match tr {
-            TokenWithRange {
-                token: Token::Comment(_),
-                ..
-            } => {
-                // consume comments
-            }
-            _ => {
-                clean_tokens.push(tr);
-            }
-        }
-    }
+    //     let mut token_iter = tokens.into_iter();
+    //     let peekable_token_iter = PeekableIter::new(&mut token_iter, 1);
+    //     let mut clean_tokens: Vec<TokenWithRange> = vec![];
+    //
+    //     for tr in peekable_token_iter {
+    //         match tr {
+    //             TokenWithRange {
+    //                 token: Token::Comment(_),
+    //                 ..
+    //             } => {
+    //                 // consume comments
+    //             }
+    //             _ => {
+    //                 clean_tokens.push(tr);
+    //             }
+    //         }
+    //     }
 
     clean_tokens
 }

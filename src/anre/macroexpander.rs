@@ -8,23 +8,6 @@ use crate::{error::Error, location::Location, peekableiter::PeekableIter};
 
 use super::token::{Token, TokenWithRange};
 
-fn remove_comments(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
-    // remove all comments.
-    let clean_tokens: Vec<TokenWithRange> = tokens
-        .into_iter()
-        .filter(|e| {
-            !matches!(
-                e,
-                TokenWithRange {
-                    token: Token::Comment(_),
-                    ..
-                }
-            )
-        })
-        .collect();
-    clean_tokens
-}
-
 fn extract_definitions(
     mut tokens: Vec<TokenWithRange>,
 ) -> Result<(Vec<TokenWithRange>, Vec<Definition>), Error> {
@@ -123,9 +106,10 @@ fn find_and_replace_identifiers(
     }
 }
 
+/// The input tokens must be removed from comments
+/// and normalized.
 pub fn expand(tokens: Vec<TokenWithRange>) -> Result<Vec<TokenWithRange>, Error> {
-    let clean_tokens = remove_comments(tokens);
-    let (program_tokens, definitions) = extract_definitions(clean_tokens)?;
+    let (program_tokens, definitions) = extract_definitions(tokens)?;
     let expand_tokens = replace_identifiers(program_tokens, definitions);
 
     Ok(expand_tokens)
@@ -275,7 +259,7 @@ mod tests {
 
     use crate::{
         anre::{
-            commentcleaner::clean,
+            commentremover::clean,
             lexer::lex_from_str,
             normalizer::normalize,
             token::{Token, TokenWithRange},

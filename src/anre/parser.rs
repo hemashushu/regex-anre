@@ -18,7 +18,7 @@ use crate::{
 };
 
 use super::{
-    commentcleaner::clean,
+    commentremover::clean,
     lexer::lex_from_str,
     macroexpander::expand,
     normalizer::normalize,

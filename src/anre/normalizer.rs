@@ -21,11 +21,11 @@ pub fn normalize(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
     //   + comma + comment(s) + comma => comma + comma
     //   + blank(s) + comment(s) + blank(s) => blank
 
-    let mut clean_token_iter = tokens.into_iter();
-    let mut peekable_clean_token_iter = PeekableIter::new(&mut clean_token_iter, 1);
+    let mut token_iter = tokens.into_iter();
+    let mut peekable_token_iter = PeekableIter::new(&mut token_iter, 1);
     let mut normalized_tokens: Vec<TokenWithRange> = vec![];
 
-    while let Some(token_with_range) = peekable_clean_token_iter.next() {
+    while let Some(token_with_range) = peekable_token_iter.next() {
         let TokenWithRange {
             token,
             range: current_range,
@@ -40,30 +40,30 @@ pub fn normalize(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
                 while let Some(TokenWithRange {
                     token: Token::NewLine,
                     range: current_range,
-                }) = peekable_clean_token_iter.peek(0)
+                }) = peekable_token_iter.peek(0)
                 {
                     end_range = *current_range;
-                    peekable_clean_token_iter.next();
+                    peekable_token_iter.next();
                 }
 
                 // found ','
                 if let Some(TokenWithRange {
                     token: Token::Comma,
                     range: current_range,
-                }) = peekable_clean_token_iter.peek(0)
+                }) = peekable_token_iter.peek(0)
                 {
                     // consume comma
                     start_range = *current_range;
                     end_range = start_range;
-                    peekable_clean_token_iter.next();
+                    peekable_token_iter.next();
 
                     // consume trailing continuous newlines
                     while let Some(TokenWithRange {
                         token: Token::NewLine,
                         range: _,
-                    }) = peekable_clean_token_iter.peek(0)
+                    }) = peekable_token_iter.peek(0)
                     {
-                        peekable_clean_token_iter.next();
+                        peekable_token_iter.next();
                     }
 
                     TokenWithRange::new(
@@ -82,9 +82,9 @@ pub fn normalize(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
                 while let Some(TokenWithRange {
                     token: Token::NewLine,
                     range: _,
-                }) = peekable_clean_token_iter.peek(0)
+                }) = peekable_token_iter.peek(0)
                 {
-                    peekable_clean_token_iter.next();
+                    peekable_token_iter.next();
                 }
 
                 TokenWithRange::new(
@@ -124,7 +124,7 @@ mod tests {
 
     use crate::{
         anre::{
-            commentcleaner::clean,
+            commentremover::clean,
             lexer::lex_from_str,
             token::{Token, TokenWithRange},
         },
