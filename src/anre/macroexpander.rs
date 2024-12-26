@@ -4,13 +4,13 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::{error::Error, location::Location, peekableiter::PeekableIter};
+use crate::{AnreError, location::Location, peekableiter::PeekableIter};
 
 use super::token::{Token, TokenWithRange};
 
 fn extract_definitions(
     mut tokens: Vec<TokenWithRange>,
-) -> Result<(Vec<TokenWithRange>, Vec<Definition>), Error> {
+) -> Result<(Vec<TokenWithRange>, Vec<Definition>), AnreError> {
     let mut definitions: Vec<Definition> = vec![];
     loop {
         let pos = tokens.iter().position(|token_with_range| {
@@ -62,7 +62,7 @@ fn extract_definitions(
             let definition = extractor.extract()?;
             definitions.push(definition);
         } else {
-            return Err(Error::UnexpectedEndOfDocument(
+            return Err(AnreError::UnexpectedEndOfDocument(
                 "Incomplete definition statement.".to_owned(),
             ));
         }
@@ -108,7 +108,7 @@ fn find_and_replace_identifiers(
 
 /// The input tokens must be removed from comments
 /// and normalized.
-pub fn expand(tokens: Vec<TokenWithRange>) -> Result<Vec<TokenWithRange>, Error> {
+pub fn expand(tokens: Vec<TokenWithRange>) -> Result<Vec<TokenWithRange>, AnreError> {
     let (program_tokens, definitions) = extract_definitions(tokens)?;
     let expand_tokens = replace_identifiers(program_tokens, definitions);
 
@@ -130,7 +130,7 @@ impl<'a> DefinitionExtractor<'a> {
     fn new(upstream: &'a mut PeekableIter<'a, TokenWithRange>) -> Self {
         Self {
             upstream,
-            last_range: Location::new_range(0, 0, 0, 0, 0),
+            last_range: Location::new_range(/*0,*/ 0, 0, 0, 0),
         }
     }
 
@@ -169,59 +169,40 @@ impl<'a> DefinitionExtractor<'a> {
         }
     }
 
-    // fn expect_token(&mut self, expected_token: &Token) -> Result<(), Error> {
-    //     match self.next_token() {
-    //         Some(token) => {
-    //             if &token == expected_token {
-    //                 Ok(())
-    //             } else {
-    //                 Err(Error::MessageWithLocation(
-    //                     format!("Expect token: {}.", expected_token.get_description()),
-    //                     self.last_range.get_position_by_range_start(),
-    //                 ))
-    //             }
-    //         }
-    //         None => Err(Error::UnexpectedEndOfDocument(format!(
-    //             "Expect token: {}.",
-    //             expected_token.get_description()
-    //         ))),
-    //     }
-    // }
-
-    fn expect_new_line_or_comma(&mut self) -> Result<(), Error> {
+    fn consume_new_line_or_comma(&mut self) -> Result<(), AnreError> {
         match self.peek_token(0) {
             Some(Token::NewLine | Token::Comma) => {
                 self.next_token();
                 Ok(())
             }
-            Some(_) => Err(Error::MessageWithLocation(
+            Some(_) => Err(AnreError::MessageWithLocation(
                 "Expect a comma or new-line.".to_owned(),
                 self.peek_range(0).unwrap().get_position_by_range_start(),
             )),
-            None => Err(Error::UnexpectedEndOfDocument(
+            None => Err(AnreError::UnexpectedEndOfDocument(
                 "Expect a comma or new-line.".to_owned(),
             )),
         }
     }
 
-    fn expect_identifier(&mut self) -> Result<String, Error> {
+    fn consume_identifier(&mut self) -> Result<String, AnreError> {
         match self.peek_token(0) {
             Some(Token::Identifier(s)) => {
                 let id = s.to_owned();
                 self.next_token();
                 Ok(id)
             }
-            Some(_) => Err(Error::MessageWithLocation(
+            Some(_) => Err(AnreError::MessageWithLocation(
                 "Expect an identifier.".to_owned(),
-                self.last_range.get_position_by_range_start(),
+                self.peek_range(0).unwrap().get_position_by_range_start(),
             )),
-            None => Err(Error::UnexpectedEndOfDocument(
+            None => Err(AnreError::UnexpectedEndOfDocument(
                 "Expect an identifier.".to_owned(),
             )),
         }
     }
 
-    fn extract(&mut self) -> Result<Definition, Error> {
+    fn extract(&mut self) -> Result<Definition, AnreError> {
         // "define" "(" ... ")" ?
         // -------- ---     --- -
         // ^        ^       ^__ validated
@@ -229,11 +210,13 @@ impl<'a> DefinitionExtractor<'a> {
         // | current validated
 
         self.next_token(); // consume "define"
+        self.consume_new_line_if_exist(); // consume trailing new-line
+
         self.next_token(); // consume '('
         self.consume_new_line_if_exist(); // consume trailing new-line
 
-        let name = self.expect_identifier()?;
-        self.expect_new_line_or_comma()?;
+        let name = self.consume_identifier()?;
+        self.consume_new_line_or_comma()?;
 
         let mut token_with_ranges = vec![];
 
@@ -264,12 +247,12 @@ mod tests {
             normalizer::normalize,
             token::{Token, TokenWithRange},
         },
-        error::Error,
+        AnreError,
     };
 
     use super::expand;
 
-    fn expanded_lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, Error> {
+    fn expand_and_lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, AnreError> {
         let tokens = lex_from_str(s)?;
         let clean_tokens = clean(tokens);
         let normalized_tokens = normalize(clean_tokens);
@@ -278,8 +261,8 @@ mod tests {
         Ok(expanded_and_normalized_tokens)
     }
 
-    fn expanded_lex_from_str_without_location(s: &str) -> Result<Vec<Token>, Error> {
-        let tokens = expanded_lex_from_str(s)?
+    fn expand_and_lex_from_str_without_location(s: &str) -> Result<Vec<Token>, AnreError> {
+        let tokens = expand_and_lex_from_str(s)?
             .into_iter()
             .map(|e| e.token)
             .collect::<Vec<Token>>();
@@ -287,9 +270,9 @@ mod tests {
     }
 
     #[test]
-    fn test_expand() {
+    fn test_macro_expand() {
         assert_eq!(
-            expanded_lex_from_str_without_location(
+            expand_and_lex_from_str_without_location(
                 r#"
             define(a, 'a')
             start, a, end
@@ -306,7 +289,7 @@ mod tests {
         );
 
         assert_eq!(
-            expanded_lex_from_str_without_location(
+            expand_and_lex_from_str_without_location(
                 r#"
             define(a, 'a')
             define(b, a+)
@@ -327,7 +310,7 @@ mod tests {
         );
 
         assert_eq!(
-            expanded_lex_from_str_without_location(
+            expand_and_lex_from_str_without_location(
                 r#"
             define(a, 'a')
             define(b, (a, 'b'))

@@ -12,9 +12,9 @@ use crate::{
         CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
         PresetCharSetName, Program, SpecialCharName,
     },
-    error::Error,
     location::Location,
     peekableiter::PeekableIter,
+    AnreError,
 };
 
 use super::{
@@ -31,7 +31,7 @@ impl<'a> Parser<'a> {
     fn new(upstream: &'a mut PeekableIter<'a, TokenWithRange>) -> Self {
         Self {
             upstream,
-            last_range: Location::new_range(0, 0, 0, 0, 0),
+            last_range: Location::new_range(/*0,*/ 0, 0, 0, 0),
         }
     }
 
@@ -52,53 +52,32 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // fn peek_token_and_equals(&self, offset: usize, expected_token: &Token) -> bool {
-    //     matches!(
-    //         self.upstream.peek(offset),
-    //         Some(TokenWithRange { token, .. }) if token == expected_token)
-    // }
-
-    fn expect_token(
+    fn consume_token(
         &mut self,
         expected_token: &Token,
         token_description: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<(), AnreError> {
         match self.next_token() {
             Some(token) => {
                 if &token == expected_token {
                     Ok(())
                 } else {
-                    Err(Error::MessageWithLocation(
+                    Err(AnreError::MessageWithLocation(
                         format!("Expect token: {}.", token_description),
                         self.last_range.get_position_by_range_start(),
                     ))
                 }
             }
-            None => Err(Error::UnexpectedEndOfDocument(format!(
+            None => Err(AnreError::UnexpectedEndOfDocument(format!(
                 "Expect token: {}.",
                 token_description
             ))),
         }
     }
-
-    // fn expect_char(&mut self) -> Result<char, Error> {
-    //     match self.peek_token(0) {
-    //         Some(Token::Char(c)) => {
-    //             let ch = *c;
-    //             self.next_token();
-    //             Ok(ch)
-    //         }
-    //         Some(_) => Err(Error::MessageWithLocation(
-    //             "Expect a char.".to_owned(),
-    //             self.last_range.get_position_by_range_start(),
-    //         )),
-    //         None => Err(Error::UnexpectedEndOfDocument("Expect a char.".to_owned())),
-    //     }
-    // }
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse_program(&mut self) -> Result<Program, Error> {
+    pub fn parse_program(&mut self) -> Result<Program, AnreError> {
         let mut expressions = vec![];
 
         // there is only one expression in the tradition regular expression
@@ -126,7 +105,7 @@ impl<'a> Parser<'a> {
         Ok(program)
     }
 
-    fn parse_expression(&mut self) -> Result<Expression, Error> {
+    fn parse_expression(&mut self) -> Result<Expression, AnreError> {
         // token ...
         // -----
         // ^
@@ -144,7 +123,7 @@ impl<'a> Parser<'a> {
         self.parse_logic_or()
     }
 
-    fn parse_logic_or(&mut self) -> Result<Expression, Error> {
+    fn parse_logic_or(&mut self) -> Result<Expression, AnreError> {
         // token ... [ "|" expression ]
         // -----
         // ^
@@ -197,7 +176,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn parse_consecutive_expression(&mut self) -> Result<Expression, Error> {
+    fn parse_consecutive_expression(&mut self) -> Result<Expression, AnreError> {
         // token ...
         // -----
         // ^
@@ -218,7 +197,7 @@ impl<'a> Parser<'a> {
         }
 
         if expressions.is_empty() {
-            return Err(Error::MessageWithLocation(
+            return Err(AnreError::MessageWithLocation(
                 "Encountered a blank expression.".to_owned(),
                 self.last_range,
             ));
@@ -282,7 +261,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_notations(&mut self) -> Result<Expression, Error> {
+    fn parse_notations(&mut self) -> Result<Expression, AnreError> {
         // token ... notations
         // -----
         // ^
@@ -314,8 +293,8 @@ impl<'a> Parser<'a> {
 
                     let function_call = FunctionCall {
                         name,
-                        expression: Box::new(expression),
-                        args: vec![],
+                        // expression: Box::new(expression),
+                        args: vec![FunctionCallArg::Expression(Box::new(expression))],
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
 
@@ -323,10 +302,12 @@ impl<'a> Parser<'a> {
                 }
                 Token::Repetition(repetition, lazy) => {
                     let mut args = vec![];
+                    args.push(FunctionCallArg::Expression(Box::new(expression)));
+
                     let name = match repetition {
                         Repetition::Specified(n) => {
                             if *lazy {
-                                return Err(Error::MessageWithLocation(
+                                return Err(AnreError::MessageWithLocation(
                                     "Specified number of repetitions does not support lazy mode, i.e. '{m}?' is not allowed.".to_owned(), self.last_range));
                             }
 
@@ -344,7 +325,7 @@ impl<'a> Parser<'a> {
                         }
                         Repetition::Range(m, n) => {
                             if *lazy && m == n {
-                                return Err(Error::MessageWithLocation(
+                                return Err(AnreError::MessageWithLocation(
                                     "Specified number of repetitions does not support lazy mode, i.e. '{m,m}?' is not allowed.".to_owned(), self.last_range));
                             }
 
@@ -361,7 +342,7 @@ impl<'a> Parser<'a> {
 
                     let function_call = FunctionCall {
                         name,
-                        expression: Box::new(expression),
+                        // expression: Box::new(expression),
                         args,
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
@@ -381,8 +362,11 @@ impl<'a> Parser<'a> {
 
                     let function_call = FunctionCall {
                         name,
-                        expression: Box::new(expression),
-                        args: vec![FunctionCallArg::Expression(Box::new(arg0))],
+                        // expression: Box::new(expression),
+                        args: vec![
+                            FunctionCallArg::Expression(Box::new(expression)),
+                            FunctionCallArg::Expression(Box::new(arg0)),
+                        ],
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
                 }
@@ -395,7 +379,7 @@ impl<'a> Parser<'a> {
         Ok(expression)
     }
 
-    fn parse_primary_expression(&mut self) -> Result<Expression, Error> {
+    fn parse_primary_expression(&mut self) -> Result<Expression, AnreError> {
         // token ...
         // ---------
         // ^
@@ -442,8 +426,11 @@ impl<'a> Parser<'a> {
 
                 let function_call = FunctionCall {
                     name,
-                    expression: Box::new(expression),
-                    args: vec![FunctionCallArg::Expression(Box::new(arg0))],
+                    // expression: Box::new(expression),
+                    args: vec![
+                        FunctionCallArg::Expression(Box::new(expression)),
+                        FunctionCallArg::Expression(Box::new(arg0)),
+                    ],
                 };
                 Expression::FunctionCall(Box::new(function_call))
             }
@@ -469,7 +456,7 @@ impl<'a> Parser<'a> {
         Ok(expression)
     }
 
-    fn parse_group(&mut self) -> Result<Expression, Error> {
+    fn parse_group(&mut self) -> Result<Expression, AnreError> {
         // "(" {expression} ")" ?
         // ---                  -
         // ^                    ^-- to here
@@ -484,15 +471,15 @@ impl<'a> Parser<'a> {
         let expression = self.parse_expression()?;
 
         // consume ")"
-        self.expect_token(&Token::GroupEnd, "right parenthese \")\"")?;
+        self.consume_token(&Token::GroupEnd, "right parenthese \")\"")?;
 
         let group_expression = match head_token {
             Token::GroupStart => {
                 // regex group == ANRE indexed capture group
                 let function_call = FunctionCall {
                     name: FunctionName::Index,
-                    expression: Box::new(expression),
-                    args: vec![],
+                    // expression: Box::new(expression),
+                    args: vec![FunctionCallArg::Expression(Box::new(expression))],
                 };
                 Expression::FunctionCall(Box::new(function_call))
             }
@@ -504,8 +491,11 @@ impl<'a> Parser<'a> {
                 // named capture group
                 let function_call = FunctionCall {
                     name: FunctionName::Name,
-                    expression: Box::new(expression),
-                    args: vec![FunctionCallArg::Identifier(name)],
+                    // expression: Box::new(expression),
+                    args: vec![
+                        FunctionCallArg::Expression(Box::new(expression)),
+                        FunctionCallArg::Identifier(name),
+                    ],
                 };
                 Expression::FunctionCall(Box::new(function_call))
             }
@@ -515,7 +505,7 @@ impl<'a> Parser<'a> {
         Ok(group_expression)
     }
 
-    fn parse_literal(&mut self) -> Result<Literal, Error> {
+    fn parse_literal(&mut self) -> Result<Literal, AnreError> {
         // token ...
         // -----
         // ^
@@ -546,7 +536,7 @@ impl<'a> Parser<'a> {
                 Literal::Special(SpecialCharName::CharAny)
             }
             _ => {
-                return Err(Error::MessageWithLocation(
+                return Err(AnreError::MessageWithLocation(
                     "Expect a literal.".to_owned(),
                     self.last_range,
                 ));
@@ -556,7 +546,7 @@ impl<'a> Parser<'a> {
         Ok(literal)
     }
 
-    fn parse_charset(&mut self) -> Result<CharSet, Error> {
+    fn parse_charset(&mut self) -> Result<CharSet, AnreError> {
         // "[" {char | char_range | preset_charset} "]" ?
         // ---                                          -
         // ^                                            ^__ to here
@@ -598,7 +588,7 @@ impl<'a> Parser<'a> {
                     elements.push(CharSetElement::PresetCharSet(preset_charset_name));
                 }
                 _ => {
-                    return Err(Error::MessageWithLocation(
+                    return Err(AnreError::MessageWithLocation(
                         "Unsupported char set element.".to_owned(),
                         self.last_range,
                     ));
@@ -606,7 +596,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::CharSetEnd, "right bracket \"]\"")?;
+        self.consume_token(&Token::CharSetEnd, "right bracket \"]\"")?;
 
         let charset = CharSet {
             negative: matches!(head_token, Token::CharSetStartNegative),
@@ -629,7 +619,7 @@ fn preset_charset_name_from_char(name_char: char) -> PresetCharSetName {
     }
 }
 
-pub fn parse_from_str(s: &str) -> Result<Program, Error> {
+pub fn parse_from_str(s: &str) -> Result<Program, AnreError> {
     let tokens = lex_from_str(s)?;
     let mut token_iter = tokens.into_iter();
     let mut peekable_token_iter = PeekableIter::new(&mut token_iter, PARSER_PEEK_TOKEN_MAX_COUNT);
@@ -645,7 +635,7 @@ mod tests {
         ast::{
             CharRange, CharSet, CharSetElement, Expression, Literal, PresetCharSetName, Program,
         },
-        error::Error,
+        AnreError,
     };
 
     use super::parse_from_str;
@@ -750,13 +740,13 @@ at_least_lazy('z', 11)"#
         // err: '{m}?' is not allowed
         assert!(matches!(
             parse_from_str(r#"a{3}?"#,),
-            Err(Error::MessageWithLocation(_, _))
+            Err(AnreError::MessageWithLocation(_, _))
         ));
 
         // err: '{m,m}?' is not allowed
         assert!(matches!(
             parse_from_str(r#"a{3,3}?"#,),
-            Err(Error::MessageWithLocation(_, _))
+            Err(AnreError::MessageWithLocation(_, _))
         ));
     }
 

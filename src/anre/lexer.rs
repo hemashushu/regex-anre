@@ -7,17 +7,17 @@
 pub const LEXER_PEEK_CHAR_MAX_COUNT: usize = 2;
 
 use crate::{
-    charposition::{CharWithPosition, CharsWithPositionIter},
-    error::Error,
+    charwithposition::{CharWithPosition, CharsWithPositionIter},
     location::Location,
     peekableiter::PeekableIter,
+    AnreError,
 };
 
 use super::token::{Comment, Token, TokenWithRange};
 
-pub fn lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, Error> {
+pub fn lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, AnreError> {
     let mut chars = s.chars();
-    let mut char_position_iter = CharsWithPositionIter::new(0, &mut chars);
+    let mut char_position_iter = CharsWithPositionIter::new(&mut chars);
     let mut peekable_char_position_iter =
         PeekableIter::new(&mut char_position_iter, LEXER_PEEK_CHAR_MAX_COUNT);
     let mut lexer = Lexer::new(&mut peekable_char_position_iter);
@@ -34,7 +34,7 @@ impl<'a> Lexer<'a> {
     fn new(upstream: &'a mut PeekableIter<'a, CharWithPosition>) -> Self {
         Self {
             upstream,
-            last_position: Location::new_position(0, 0, 0, 0),
+            last_position: Location::new_position(/*0,*/ 0, 0, 0),
             saved_positions: vec![],
         }
     }
@@ -82,7 +82,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    fn lex(&mut self) -> Result<Vec<TokenWithRange>, Error> {
+    fn lex(&mut self) -> Result<Vec<TokenWithRange>, AnreError> {
         let mut token_with_ranges = vec![];
 
         while let Some(current_char) = self.peek_char(0) {
@@ -148,7 +148,7 @@ impl<'a> Lexer<'a> {
                     self.next_char(); // consume '.'
 
                     token_with_ranges.push(TokenWithRange::from_position_and_length(
-                        Token::Interval,
+                        Token::Range,
                         &self.pop_saved_position(),
                         2,
                     ));
@@ -281,7 +281,7 @@ impl<'a> Lexer<'a> {
                 }
                 '0'..='9' => {
                     // number
-                    token_with_ranges.push(self.lex_number()?);
+                    token_with_ranges.push(self.lex_number_decimal()?);
                 }
                 '"' => {
                     // string
@@ -300,11 +300,11 @@ impl<'a> Lexer<'a> {
                     token_with_ranges.push(self.lex_block_comment()?);
                 }
                 'a'..='z' | 'A'..='Z' | '_' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{10ffff}' => {
-                    // identifier (the key name of struct/object) or keyword
+                    // identifier/name/keyword
                     token_with_ranges.push(self.lex_identifier()?);
                 }
                 current_char => {
-                    return Err(Error::MessageWithLocation(
+                    return Err(AnreError::MessageWithLocation(
                         format!("Unexpected char '{}'.", current_char),
                         *self.peek_position(0).unwrap(),
                     ));
@@ -315,7 +315,7 @@ impl<'a> Lexer<'a> {
         Ok(token_with_ranges)
     }
 
-    fn lex_identifier(&mut self) -> Result<TokenWithRange, Error> {
+    fn lex_identifier(&mut self) -> Result<TokenWithRange, AnreError> {
         // key_nameT  //
         // ^       ^__// to here
         // |__________// current char, validated
@@ -375,7 +375,7 @@ impl<'a> Lexer<'a> {
                     break;
                 }
                 _ => {
-                    return Err(Error::MessageWithLocation(
+                    return Err(AnreError::MessageWithLocation(
                         format!("Invalid char '{}' for identifier.", current_char),
                         *self.peek_position(0).unwrap(),
                     ));
@@ -400,7 +400,7 @@ impl<'a> Lexer<'a> {
         Ok(TokenWithRange::new(token, name_range))
     }
 
-    fn lex_number(&mut self) -> Result<TokenWithRange, Error> {
+    fn lex_number_decimal(&mut self) -> Result<TokenWithRange, AnreError> {
         // 123456T  //
         // ^     ^__// to here
         // |________// current char, validated
@@ -428,7 +428,7 @@ impl<'a> Lexer<'a> {
                     break;
                 }
                 _ => {
-                    return Err(Error::MessageWithLocation(
+                    return Err(AnreError::MessageWithLocation(
                         format!("Invalid char '{}' for decimal number.", current_char),
                         *self.peek_position(0).unwrap(),
                     ));
@@ -442,7 +442,7 @@ impl<'a> Lexer<'a> {
         );
 
         let num = num_string.parse::<usize>().map_err(|_| {
-            Error::MessageWithLocation(
+            AnreError::MessageWithLocation(
                 format!("Can not convert \"{}\" to integer number.", num_string),
                 num_range,
             )
@@ -453,7 +453,7 @@ impl<'a> Lexer<'a> {
         Ok(TokenWithRange::new(num_token, num_range))
     }
 
-    fn lex_char(&mut self) -> Result<TokenWithRange, Error> {
+    fn lex_char(&mut self) -> Result<TokenWithRange, AnreError> {
         // 'a'?  //
         // ^  ^__// to here
         // |_____// current char, validated
@@ -489,16 +489,16 @@ impl<'a> Lexer<'a> {
                                         // new line character (line feed, LF, ascii 10)
                                         '\n'
                                     }
-                                    // '0' => {
-                                    //     // null char
-                                    //     '\0'
-                                    // }
+                                    '0' => {
+                                        // null char
+                                        '\0'
+                                    }
                                     'u' => {
                                         if self.peek_char_and_equals(0, '{') {
                                             // unicode code point, e.g. '\u{2d}', '\u{6587}'
                                             self.unescape_unicode()?
                                         } else {
-                                            return Err(Error::MessageWithLocation(
+                                            return Err(AnreError::MessageWithLocation(
                                                 "Missing the brace for unicode escape sequence."
                                                     .to_owned(),
                                                 self.last_position.move_position_forward(),
@@ -506,7 +506,7 @@ impl<'a> Lexer<'a> {
                                         }
                                     }
                                     _ => {
-                                        return Err(Error::MessageWithLocation(
+                                        return Err(AnreError::MessageWithLocation(
                                             format!("Unexpected escape char '{}'.", previous_char),
                                             // self.last_position,
                                             Location::from_position_and_length(
@@ -519,7 +519,7 @@ impl<'a> Lexer<'a> {
                             }
                             None => {
                                 // `\` + EOF
-                                return Err(Error::UnexpectedEndOfDocument(
+                                return Err(AnreError::UnexpectedEndOfDocument(
                                     "Incomplete escape character sequence.".to_owned(),
                                 ));
                             }
@@ -527,7 +527,7 @@ impl<'a> Lexer<'a> {
                     }
                     '\'' => {
                         // `''`
-                        return Err(Error::MessageWithLocation(
+                        return Err(AnreError::MessageWithLocation(
                             "Empty char.".to_owned(),
                             Location::from_position_pair_with_end_included(
                                 &self.pop_saved_position(),
@@ -543,7 +543,7 @@ impl<'a> Lexer<'a> {
             }
             None => {
                 // `'EOF`
-                return Err(Error::UnexpectedEndOfDocument(
+                return Err(AnreError::UnexpectedEndOfDocument(
                     "Incomplete character.".to_owned(),
                 ));
             }
@@ -556,14 +556,14 @@ impl<'a> Lexer<'a> {
             }
             Some(_) => {
                 // `'a?`
-                return Err(Error::MessageWithLocation(
+                return Err(AnreError::MessageWithLocation(
                     "Expected a closing single quote for char".to_owned(),
                     self.last_position,
                 ));
             }
             None => {
                 // `'aEOF`
-                return Err(Error::UnexpectedEndOfDocument(
+                return Err(AnreError::UnexpectedEndOfDocument(
                     "Incomplete character.".to_owned(),
                 ));
             }
@@ -576,7 +576,7 @@ impl<'a> Lexer<'a> {
         Ok(TokenWithRange::new(Token::Char(character), character_range))
     }
 
-    fn unescape_unicode(&mut self) -> Result<char, Error> {
+    fn unescape_unicode(&mut self) -> Result<char, AnreError> {
         // \u{6587}?  //
         //   ^     ^__// to here
         //   |________// current char, validated
@@ -593,7 +593,7 @@ impl<'a> Lexer<'a> {
                     '}' => break,
                     '0'..='9' | 'a'..='f' | 'A'..='F' => codepoint_string.push(previous_char),
                     _ => {
-                        return Err(Error::MessageWithLocation(
+                        return Err(AnreError::MessageWithLocation(
                             format!(
                                 "Invalid character '{}' for unicode escape sequence.",
                                 previous_char
@@ -604,7 +604,7 @@ impl<'a> Lexer<'a> {
                 },
                 None => {
                     // EOF
-                    return Err(Error::UnexpectedEndOfDocument(
+                    return Err(AnreError::UnexpectedEndOfDocument(
                         "Incomplete unicode escape sequence.".to_owned(),
                     ));
                 }
@@ -621,14 +621,14 @@ impl<'a> Lexer<'a> {
         );
 
         if codepoint_string.len() > 6 {
-            return Err(Error::MessageWithLocation(
+            return Err(AnreError::MessageWithLocation(
                 "Unicode point code exceeds six digits.".to_owned(),
                 codepoint_range,
             ));
         }
 
         if codepoint_string.is_empty() {
-            return Err(Error::MessageWithLocation(
+            return Err(AnreError::MessageWithLocation(
                 "Empty unicode code point.".to_owned(),
                 codepoint_range,
             ));
@@ -644,14 +644,14 @@ impl<'a> Lexer<'a> {
             // https://doc.rust-lang.org/std/primitive.char.html
             Ok(c)
         } else {
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 "Invalid unicode code point.".to_owned(),
                 codepoint_range,
             ))
         }
     }
 
-    fn lex_string(&mut self) -> Result<TokenWithRange, Error> {
+    fn lex_string(&mut self) -> Result<TokenWithRange, AnreError> {
         // "abc"?  //
         // ^    ^__// to here
         // |_______// current char, validated
@@ -704,14 +704,14 @@ impl<'a> Lexer<'a> {
                                                 let ch = self.unescape_unicode()?;
                                                 final_string.push(ch);
                                             } else {
-                                                return Err(Error::MessageWithLocation(
+                                                return Err(AnreError::MessageWithLocation(
                                                     "Missing the brace for unicode escape sequence.".to_owned(),
                                                     self.last_position.move_position_forward()
                                                 ));
                                             }
                                         }
                                         _ => {
-                                            return Err(Error::MessageWithLocation(
+                                            return Err(AnreError::MessageWithLocation(
                                                 format!(
                                                     "Unsupported escape char '{}'.",
                                                     previous_char
@@ -726,7 +726,7 @@ impl<'a> Lexer<'a> {
                                 }
                                 None => {
                                     // `\` + EOF
-                                    return Err(Error::UnexpectedEndOfDocument(
+                                    return Err(AnreError::UnexpectedEndOfDocument(
                                         "Incomplete character escape sequence.".to_owned(),
                                     ));
                                 }
@@ -744,7 +744,7 @@ impl<'a> Lexer<'a> {
                 }
                 None => {
                     // `"...EOF`
-                    return Err(Error::UnexpectedEndOfDocument(
+                    return Err(AnreError::UnexpectedEndOfDocument(
                         "Incomplete string.".to_owned(),
                     ));
                 }
@@ -762,7 +762,7 @@ impl<'a> Lexer<'a> {
         ))
     }
 
-    fn lex_line_comment(&mut self) -> Result<TokenWithRange, Error> {
+    fn lex_line_comment(&mut self) -> Result<TokenWithRange, AnreError> {
         // xx...[\r]\n?  //
         // ^^         ^__// to here ('?' = any char or EOF)
         // ||____________// validated
@@ -807,7 +807,7 @@ impl<'a> Lexer<'a> {
         ))
     }
 
-    fn lex_block_comment(&mut self) -> Result<TokenWithRange, Error> {
+    fn lex_block_comment(&mut self) -> Result<TokenWithRange, AnreError> {
         // /*...*/?  //
         // ^^     ^__// to here
         // ||________// validated
@@ -861,7 +861,7 @@ impl<'a> Lexer<'a> {
                         "Incomplete block comment.".to_owned()
                     };
 
-                    return Err(Error::UnexpectedEndOfDocument(msg));
+                    return Err(AnreError::UnexpectedEndOfDocument(msg));
                 }
             }
         }
@@ -884,8 +884,8 @@ mod tests {
 
     use crate::{
         anre::token::{Comment, Token, TokenWithRange},
-        error::Error,
         location::Location,
+        AnreError,
     };
 
     use super::lex_from_str;
@@ -916,7 +916,7 @@ mod tests {
         }
     }
 
-    fn lex_from_str_without_location(s: &str) -> Result<Vec<Token>, Error> {
+    fn lex_from_str_without_location(s: &str) -> Result<Vec<Token>, AnreError> {
         let tokens = lex_from_str(s)?
             .into_iter()
             .map(|e| e.token)
@@ -956,16 +956,16 @@ mod tests {
         assert_eq!(
             lex_from_str("()").unwrap(),
             vec![
-                TokenWithRange::new(Token::LeftParen, Location::new_range(0, 0, 0, 0, 1)),
-                TokenWithRange::new(Token::RightParen, Location::new_range(0, 1, 0, 1, 1)),
+                TokenWithRange::new(Token::LeftParen, Location::new_range(/*0,*/ 0, 0, 0, 1)),
+                TokenWithRange::new(Token::RightParen, Location::new_range(/*0,*/ 1, 0, 1, 1)),
             ]
         );
 
         assert_eq!(
             lex_from_str("(  )").unwrap(),
             vec![
-                TokenWithRange::new(Token::LeftParen, Location::new_range(0, 0, 0, 0, 1)),
-                TokenWithRange::new(Token::RightParen, Location::new_range(0, 3, 0, 3, 1)),
+                TokenWithRange::new(Token::LeftParen, Location::new_range(/*0,*/ 0, 0, 0, 1)),
+                TokenWithRange::new(Token::RightParen, Location::new_range(/*0,*/ 3, 0, 3, 1)),
             ]
         );
 
@@ -979,11 +979,11 @@ mod tests {
         assert_eq!(
             lex_from_str("(\t\r\n\n\n)").unwrap(),
             vec![
-                TokenWithRange::new(Token::LeftParen, Location::new_range(0, 0, 0, 0, 1)),
-                TokenWithRange::new(Token::NewLine, Location::new_range(0, 2, 0, 2, 2,)),
-                TokenWithRange::new(Token::NewLine, Location::new_range(0, 4, 1, 0, 1,)),
-                TokenWithRange::new(Token::NewLine, Location::new_range(0, 5, 2, 0, 1,)),
-                TokenWithRange::new(Token::RightParen, Location::new_range(0, 6, 3, 0, 1)),
+                TokenWithRange::new(Token::LeftParen, Location::new_range(/*0,*/ 0, 0, 0, 1)),
+                TokenWithRange::new(Token::NewLine, Location::new_range(/*0,*/ 2, 0, 2, 2,)),
+                TokenWithRange::new(Token::NewLine, Location::new_range(/*0,*/ 4, 1, 0, 1,)),
+                TokenWithRange::new(Token::NewLine, Location::new_range(/*0,*/ 5, 2, 0, 1,)),
+                TokenWithRange::new(Token::RightParen, Location::new_range(/*0,*/ 6, 3, 0, 1)),
             ]
         );
     }
@@ -995,7 +995,7 @@ mod tests {
             vec![
                 Token::Comma,
                 Token::Exclamation,
-                Token::Interval,
+                Token::Range,
                 Token::Dot,
                 Token::LogicOr,
                 Token::LeftBracket,
@@ -1020,32 +1020,32 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::QuestionLazy,
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     2
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Question,
-                    &Location::new_position(0, 2, 0, 2),
+                    &Location::new_position(/*0,*/ 2, 0, 2),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Plus,
-                    &Location::new_position(0, 3, 0, 3),
+                    &Location::new_position(/*0,*/ 3, 0, 3),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::PlusLazy,
-                    &Location::new_position(0, 4, 0, 4),
+                    &Location::new_position(/*0,*/ 4, 0, 4),
                     2
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Asterisk,
-                    &Location::new_position(0, 6, 0, 6),
+                    &Location::new_position(/*0,*/ 6, 0, 6),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::AsteriskLazy,
-                    &Location::new_position(0, 7, 0, 7),
+                    &Location::new_position(/*0,*/ 7, 0, 7),
                     2
                 ),
             ]
@@ -1112,12 +1112,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_identifier("hello"),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     5
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_identifier("ASON"),
-                    &Location::new_position(0, 6, 0, 6),
+                    &Location::new_position(/*0,*/ 6, 0, 6),
                     4
                 )
             ]
@@ -1126,10 +1126,10 @@ mod tests {
         // err: invalid char
         assert!(matches!(
             lex_from_str_without_location("abc&xyz"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 3,
                     line: 0,
                     column: 3,
@@ -1163,12 +1163,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_preset_charset("char_space"),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     10
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_preset_charset("char_not_digit"),
-                    &Location::new_position(0, 11, 0, 11),
+                    &Location::new_position(/*0,*/ 11, 0, 11),
                     14
                 )
             ]
@@ -1195,12 +1195,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_anchor_assertion("start"),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     5
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_anchor_assertion("end"),
-                    &Location::new_position(0, 6, 0, 6),
+                    &Location::new_position(/*0,*/ 6, 0, 6),
                     3
                 )
             ]
@@ -1236,12 +1236,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Number(223),
-                    &Location::new_position(0, 0, 0, 0,),
+                    &Location::new_position(/*0,*/ 0, 0, 0,),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Number(211),
-                    &Location::new_position(0, 4, 0, 4,),
+                    &Location::new_position(/*0,*/ 4, 0, 4,),
                     3
                 ),
             ]
@@ -1250,10 +1250,10 @@ mod tests {
         // err: invalid char for decimal number
         assert!(matches!(
             lex_from_str_without_location("12x34"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 2,
                     line: 0,
                     column: 2,
@@ -1353,12 +1353,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Char('a'),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Char('文'),
-                    &Location::new_position(0, 4, 0, 4),
+                    &Location::new_position(/*0,*/ 4, 0, 4),
                     3
                 )
             ]
@@ -1368,7 +1368,7 @@ mod tests {
             lex_from_str("'\\t'").unwrap(),
             vec![TokenWithRange::from_position_and_length(
                 Token::Char('\t'),
-                &Location::new_position(0, 0, 0, 0),
+                &Location::new_position(/*0,*/ 0, 0, 0),
                 4
             )]
         );
@@ -1377,7 +1377,7 @@ mod tests {
             lex_from_str("'\\u{6587}'").unwrap(),
             vec![TokenWithRange::from_position_and_length(
                 Token::Char('文'),
-                &Location::new_position(0, 0, 0, 0),
+                &Location::new_position(/*0,*/ 0, 0, 0),
                 10
             )]
         );
@@ -1385,10 +1385,10 @@ mod tests {
         // err: empty char
         assert!(matches!(
             lex_from_str_without_location("''"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 0,
                     line: 0,
                     column: 0,
@@ -1400,22 +1400,22 @@ mod tests {
         // err: empty char, missing the char
         assert!(matches!(
             lex_from_str_without_location("'"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete char, missing the right quote, encounter EOF
         assert!(matches!(
             lex_from_str_without_location("'a"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: invalid char, expect the right quote, encounter another char
         assert!(matches!(
             lex_from_str_without_location("'ab"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 2,
                     line: 0,
                     column: 2,
@@ -1427,10 +1427,10 @@ mod tests {
         // err: invalid char, expect the right quote, encounter another char
         assert!(matches!(
             lex_from_str_without_location("'ab'"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 2,
                     line: 0,
                     column: 2,
@@ -1442,10 +1442,10 @@ mod tests {
         // err: unsupported escape char \v
         assert!(matches!(
             lex_from_str_without_location(r#"'\v'"#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 1,
                     line: 0,
                     column: 1,
@@ -1457,10 +1457,10 @@ mod tests {
         // err: unsupported hex escape "\x.."
         assert!(matches!(
             lex_from_str_without_location(r#"'\x33'"#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 1,
                     line: 0,
                     column: 1,
@@ -1474,10 +1474,10 @@ mod tests {
         //  01 2345     // index
         assert!(matches!(
             lex_from_str_without_location("'\\u{}'"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 3,
                     line: 0,
                     column: 3,
@@ -1491,10 +1491,10 @@ mod tests {
         //  01 234567890    // index
         assert!(matches!(
             lex_from_str_without_location("'\\u{1000111}'"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 3,
                     line: 0,
                     column: 3,
@@ -1508,10 +1508,10 @@ mod tests {
         //  01 2345678901
         assert!(matches!(
             lex_from_str_without_location("'\\u{123456}'"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 3,
                     line: 0,
                     column: 3,
@@ -1523,10 +1523,10 @@ mod tests {
         // err: invalid char in the unicode escape sequence
         assert!(matches!(
             lex_from_str_without_location("'\\u{12mn}''"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 6,
                     line: 0,
                     column: 6,
@@ -1538,10 +1538,10 @@ mod tests {
         // err: missing the closed brace for unicode escape sequence
         assert!(matches!(
             lex_from_str_without_location("'\\u{1234'"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 8,
                     line: 0,
                     column: 8,
@@ -1553,16 +1553,16 @@ mod tests {
         // err: incomplete unicode escape sequence, encounter EOF
         assert!(matches!(
             lex_from_str_without_location("'\\u{1234"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing left brace for unicode escape sequence
         assert!(matches!(
             lex_from_str_without_location("'\\u1234}'"),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 3,
                     line: 0,
                     column: 3,
@@ -1648,12 +1648,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::new_string("abc"),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     5
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::new_string("文字😊"),
-                    &Location::new_position(0, 6, 0, 6),
+                    &Location::new_position(/*0,*/ 6, 0, 6),
                     5
                 ),
             ]
@@ -1662,28 +1662,28 @@ mod tests {
         // err: incomplete string, missing the closed quote
         assert!(matches!(
             lex_from_str_without_location("\"abc"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the closed quote, ends with \n
         assert!(matches!(
             lex_from_str_without_location("\"abc\n"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete string, missing the closed quote, ends with whitespaces/other chars
         assert!(matches!(
             lex_from_str_without_location("\"abc\n   "),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: unsupported escape char \v
         assert!(matches!(
             lex_from_str_without_location(r#""abc\vxyz""#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 4,
                     line: 0,
                     column: 4,
@@ -1695,10 +1695,10 @@ mod tests {
         // err: unsupported hex escape "\x.."
         assert!(matches!(
             lex_from_str_without_location(r#""abc\x33xyz""#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 4,
                     line: 0,
                     column: 4,
@@ -1712,10 +1712,10 @@ mod tests {
         // 012345678    // index
         assert!(matches!(
             lex_from_str_without_location(r#""abc\u{}xyz""#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 6,
                     line: 0,
                     column: 6,
@@ -1729,10 +1729,10 @@ mod tests {
         // 0123456789023456789    // index
         assert!(matches!(
             lex_from_str_without_location(r#""abc\u{1000111}xyz""#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 6,
                     line: 0,
                     column: 6,
@@ -1746,10 +1746,10 @@ mod tests {
         // 012345678901234567
         assert!(matches!(
             lex_from_str_without_location(r#""abc\u{123456}xyz""#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 6,
                     line: 0,
                     column: 6,
@@ -1761,10 +1761,10 @@ mod tests {
         // err: invalid char in the unicode escape sequence
         assert!(matches!(
             lex_from_str_without_location(r#""abc\u{12mn}xyz""#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 9,
                     line: 0,
                     column: 9,
@@ -1776,10 +1776,10 @@ mod tests {
         // err: missing the right brace for unicode escape sequence
         assert!(matches!(
             lex_from_str_without_location(r#""abc\u{1234""#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 11,
                     line: 0,
                     column: 11,
@@ -1791,16 +1791,16 @@ mod tests {
         // err: incomplete unicode escape sequence, encounter EOF
         assert!(matches!(
             lex_from_str_without_location(r#""abc\u{1234"#),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: missing left brace for unicode escape sequence
         assert!(matches!(
             lex_from_str_without_location(r#""abc\u1234}xyz""#),
-            Err(Error::MessageWithLocation(
+            Err(AnreError::MessageWithLocation(
                 _,
                 Location {
-                    unit: 0,
+                    // unit: 0,
                     index: 6,
                     line: 0,
                     column: 6,
@@ -1846,12 +1846,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Identifier("foo".to_owned()),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Line(" bar".to_owned())),
-                    &Location::new_position(0, 4, 0, 4),
+                    &Location::new_position(/*0,*/ 4, 0, 4),
                     6
                 ),
             ]
@@ -1862,27 +1862,27 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Identifier("abc".to_owned()),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Line(" def".to_owned())),
-                    &Location::new_position(0, 4, 0, 4),
+                    &Location::new_position(/*0,*/ 4, 0, 4),
                     6
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Location::new_position(0, 10, 0, 10),
+                    &Location::new_position(/*0,*/ 10, 0, 10),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Line(" xyz".to_owned())),
-                    &Location::new_position(0, 11, 1, 0),
+                    &Location::new_position(/*0,*/ 11, 1, 0),
                     6
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Location::new_position(0, 17, 1, 6),
+                    &Location::new_position(/*0,*/ 17, 1, 6),
                     1
                 ),
             ]
@@ -1948,17 +1948,17 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Identifier("foo".to_owned()),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Block(" hello ".to_owned())),
-                    &Location::new_position(0, 4, 0, 4),
+                    &Location::new_position(/*0,*/ 4, 0, 4),
                     11
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Identifier("bar".to_owned()),
-                    &Location::new_position(0, 16, 0, 16),
+                    &Location::new_position(/*0,*/ 16, 0, 16),
                     3
                 ),
             ]
@@ -1969,12 +1969,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Block(" abc\nxyz ".to_owned())),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     13
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comment(Comment::Block(" hello ".to_owned())),
-                    &Location::new_position(0, 14, 1, 7),
+                    &Location::new_position(/*0,*/ 14, 1, 7),
                     11
                 ),
             ]
@@ -1983,25 +1983,25 @@ mod tests {
         // err: incomplete, missing "*/"
         assert!(matches!(
             lex_from_str_without_location("7 /* 11"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete, missing "*/", ends with \n
         assert!(matches!(
             lex_from_str_without_location("7 /* 11\n"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete, unpaired, missing "*/"
         assert!(matches!(
             lex_from_str_without_location("a /* b /* c */"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
 
         // err: incomplete, unpaired, missing "*/", ends with \n
         assert!(matches!(
             lex_from_str_without_location("a /* b /* c */\n"),
-            Err(Error::UnexpectedEndOfDocument(_))
+            Err(AnreError::UnexpectedEndOfDocument(_))
         ));
     }
 
@@ -2085,12 +2085,12 @@ mod tests {
                 Token::LeftBracket,
                 Token::NewLine,
                 Token::Char('a'),
-                Token::Interval,
+                Token::Range,
                 Token::Char('f'),
                 Token::Comment(Comment::Line(" comment 1".to_owned())),
                 Token::NewLine,
                 Token::Char('0'),
-                Token::Interval,
+                Token::Range,
                 Token::Char('9'),
                 Token::Comment(Comment::Line(" comment 2".to_owned())),
                 Token::NewLine,

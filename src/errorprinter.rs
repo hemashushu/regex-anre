@@ -4,7 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions,
 // more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
 
-use crate::error::Error;
+use crate::AnreError;
 
 //                 /-- selection start
 //                 |                 /-- selection length
@@ -114,7 +114,7 @@ fn generate_snippet_and_indented_detail(
     (snippet, indented_detail)
 }
 
-impl Error {
+impl AnreError {
     pub fn with_source(&self, source: &str) -> String {
         // print human readable error message with the source
 
@@ -130,8 +130,8 @@ impl Error {
         // | snippet length
 
         match self {
-            Error::Message(msg) => msg.to_owned(),
-            Error::UnexpectedEndOfDocument(detail) => {
+            AnreError::SyntaxIncorrect(msg) => msg.to_owned(),
+            AnreError::UnexpectedEndOfDocument(detail) => {
                 let msg = "Unexpected to reach the end of document.";
                 let snippet_range =
                     calculate_snippet_range(source_total_length, 0, source_total_length);
@@ -139,7 +139,7 @@ impl Error {
                     generate_snippet_and_indented_detail(&mut chars, &snippet_range, detail);
                 format!("{}\n{}\n{}", msg, snippet, indented_detail)
             }
-            Error::MessageWithLocation(detail, location) => {
+            AnreError::MessageWithLocation(detail, location) => {
                 let msg = format!(
                     "Error at line: {}, column: {}",
                     location.line + 1,
@@ -161,7 +161,7 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    use crate::{error::Error, location::Location};
+    use crate::{AnreError, location::Location};
 
     #[test]
     fn test_error_with_source() {
@@ -169,8 +169,8 @@ mod tests {
         let source2 = "012345678_b12345678_c12345678_d12345678_e123456789"; // 50 chars
         let msg = "abcde";
 
-        assert_eq!(Error::Message(msg.to_owned()).with_source(source1), msg);
-        assert_eq!(Error::Message(msg.to_owned()).with_source(source2), msg);
+        assert_eq!(AnreError::SyntaxIncorrect(msg.to_owned()).with_source(source1), msg);
+        assert_eq!(AnreError::SyntaxIncorrect(msg.to_owned()).with_source(source2), msg);
     }
 
     #[test]
@@ -180,14 +180,14 @@ mod tests {
         let msg = "abcde";
 
         assert_eq!(
-            Error::UnexpectedEndOfDocument(msg.to_owned()).with_source(source1),
+            AnreError::UnexpectedEndOfDocument(msg.to_owned()).with_source(source1),
             r#"Unexpected to reach the end of document.
 | 0123456789
 |           ^____ abcde"#
         );
 
         assert_eq!(
-            Error::UnexpectedEndOfDocument(msg.to_owned()).with_source(source2),
+            AnreError::UnexpectedEndOfDocument(msg.to_owned()).with_source(source2),
             r#"Unexpected to reach the end of document.
 | ...b12345678_c12345678_d12345678_e123456789
 |                                            ^____ abcde"#
@@ -203,7 +203,7 @@ mod tests {
         // first
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 0, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 0, 11, 13))
                 .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
@@ -211,7 +211,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 0, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 0, 11, 13))
                 .with_source(source2),
             r#"Error at line: 12, column: 14
 | 012345678_b12345678_c12345678_d12345678_...
@@ -221,7 +221,7 @@ mod tests {
         // head
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 2, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 2, 11, 13))
                 .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
@@ -229,7 +229,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 15, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 15, 11, 13))
                 .with_source(source2),
             r#"Error at line: 12, column: 14
 | ...b12345678_c12345678_d12345678_e123456789
@@ -239,7 +239,7 @@ mod tests {
         // middle
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 5, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 5, 11, 13))
                 .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
@@ -247,7 +247,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 25, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 25, 11, 13))
                 .with_source(source2),
             r#"Error at line: 12, column: 14
 | ...b12345678_c12345678_d12345678_e123456789
@@ -257,7 +257,7 @@ mod tests {
         // tail
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 8, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 8, 11, 13))
                 .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
@@ -265,7 +265,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 45, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 45, 11, 13))
                 .with_source(source2),
             r#"Error at line: 12, column: 14
 | ...b12345678_c12345678_d12345678_e123456789
@@ -275,7 +275,7 @@ mod tests {
         // last
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 10, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 10, 11, 13))
                 .with_source(source1),
             r#"Error at line: 12, column: 14
 | 0123456789
@@ -283,7 +283,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_position(0, 50, 11, 13))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_position(/*0,*/ 50, 11, 13))
                 .with_source(source2),
             r#"Error at line: 12, column: 14
 | ...b12345678_c12345678_d12345678_e123456789
@@ -300,7 +300,7 @@ mod tests {
         // first
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 0, 17, 19, 4))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 0, 17, 19, 4))
                 .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
@@ -308,7 +308,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 0, 17, 19, 8))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 0, 17, 19, 8))
                 .with_source(source2),
             r#"Error at line: 18, column: 20
 | 012345678_b12345678_c12345678_d12345678_...
@@ -318,7 +318,7 @@ mod tests {
         // head
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 2, 17, 19, 4))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 2, 17, 19, 4))
                 .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
@@ -326,7 +326,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 15, 17, 19, 8))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 15, 17, 19, 8))
                 .with_source(source2),
             r#"Error at line: 18, column: 20
 | ...b12345678_c12345678_d12345678_e123456789
@@ -336,7 +336,7 @@ mod tests {
         // middle
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 5, 17, 19, 4))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 5, 17, 19, 4))
                 .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
@@ -344,7 +344,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 25, 17, 19, 8))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 25, 17, 19, 8))
                 .with_source(source2),
             r#"Error at line: 18, column: 20
 | ...b12345678_c12345678_d12345678_e123456789
@@ -354,7 +354,7 @@ mod tests {
         // tail
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 8, 17, 19, 4))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 8, 17, 19, 4))
                 .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
@@ -362,7 +362,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 45, 17, 19, 8))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 45, 17, 19, 8))
                 .with_source(source2),
             r#"Error at line: 18, column: 20
 | ...b12345678_c12345678_d12345678_e123456789
@@ -372,7 +372,7 @@ mod tests {
         // last
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 10, 17, 19, 4))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 10, 17, 19, 4))
                 .with_source(source1),
             r#"Error at line: 18, column: 20
 | 0123456789
@@ -380,7 +380,7 @@ mod tests {
         );
 
         assert_eq!(
-            Error::MessageWithLocation(msg.to_owned(), Location::new_range(0, 50, 17, 19, 8))
+            AnreError::MessageWithLocation(msg.to_owned(), Location::new_range(/*0,*/ 50, 17, 19, 8))
                 .with_source(source2),
             r#"Error at line: 18, column: 20
 | ...b12345678_c12345678_d12345678_e123456789

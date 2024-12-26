@@ -27,10 +27,10 @@ pub struct CharsWithPositionIter<'a> {
 }
 
 impl<'a> CharsWithPositionIter<'a> {
-    pub fn new(unit: usize, upstream: &'a mut dyn Iterator<Item = char>) -> Self {
+    pub fn new(/*unit: usize,*/ upstream: &'a mut dyn Iterator<Item = char>) -> Self {
         Self {
             upstream,
-            current_position: Location::new_position(unit, 0, 0, 0),
+            current_position: Location::new_position(/*unit,*/ 0, 0, 0),
         }
     }
 }
@@ -64,7 +64,7 @@ impl<'a> Iterator for CharsWithPositionIter<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        charposition::{CharWithPosition, CharsWithPositionIter},
+        charwithposition::{CharWithPosition, CharsWithPositionIter},
         location::Location,
     };
 
@@ -72,13 +72,13 @@ mod tests {
     fn test_chars_with_position_iter() {
         {
             let mut chars = "a\nmn\nxyz".chars();
-            let mut char_position_iter = CharsWithPositionIter::new(0, &mut chars);
+            let mut char_position_iter = CharsWithPositionIter::new(&mut chars);
 
             assert_eq!(
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     'a',
-                    Location::new_position(0, 0, 0, 0)
+                    Location::new_position(/*0,*/ 0, 0, 0)
                 ))
             );
 
@@ -86,7 +86,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     '\n',
-                    Location::new_position(0, 1, 0, 1)
+                    Location::new_position(/*0,*/ 1, 0, 1)
                 ))
             );
 
@@ -94,7 +94,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     'm',
-                    Location::new_position(0, 2, 1, 0)
+                    Location::new_position(/*0,*/ 2, 1, 0)
                 ))
             );
 
@@ -102,7 +102,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     'n',
-                    Location::new_position(0, 3, 1, 1)
+                    Location::new_position(/*0,*/ 3, 1, 1)
                 ))
             );
 
@@ -110,7 +110,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     '\n',
-                    Location::new_position(0, 4, 1, 2)
+                    Location::new_position(/*0,*/ 4, 1, 2)
                 ))
             );
 
@@ -118,7 +118,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     'x',
-                    Location::new_position(0, 5, 2, 0)
+                    Location::new_position(/*0,*/ 5, 2, 0)
                 ))
             );
 
@@ -126,7 +126,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     'y',
-                    Location::new_position(0, 6, 2, 1)
+                    Location::new_position(/*0,*/ 6, 2, 1)
                 ))
             );
 
@@ -134,7 +134,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     'z',
-                    Location::new_position(0, 7, 2, 2)
+                    Location::new_position(/*0,*/ 7, 2, 2)
                 ))
             );
 
@@ -143,13 +143,13 @@ mod tests {
 
         {
             let mut chars = "\n\r\n\n".chars();
-            let mut char_position_iter = CharsWithPositionIter::new(1, &mut chars);
+            let mut char_position_iter = CharsWithPositionIter::new(&mut chars);
 
             assert_eq!(
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     '\n',
-                    Location::new_position(1, 0, 0, 0)
+                    Location::new_position(/*1,*/ 0, 0, 0)
                 ))
             );
 
@@ -157,7 +157,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     '\r',
-                    Location::new_position(1, 1, 1, 0)
+                    Location::new_position(/*1,*/ 1, 1, 0)
                 ))
             );
 
@@ -165,7 +165,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     '\n',
-                    Location::new_position(1, 2, 1, 1)
+                    Location::new_position(/*1,*/ 2, 1, 1)
                 ))
             );
 
@@ -173,7 +173,7 @@ mod tests {
                 char_position_iter.next(),
                 Some(CharWithPosition::new(
                     '\n',
-                    Location::new_position(1, 3, 2, 0)
+                    Location::new_position(/*1,*/ 3, 2, 0)
                 ))
             );
 

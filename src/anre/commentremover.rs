@@ -21,24 +21,6 @@ pub fn clean(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
         })
         .collect();
 
-    //     let mut token_iter = tokens.into_iter();
-    //     let peekable_token_iter = PeekableIter::new(&mut token_iter, 1);
-    //     let mut clean_tokens: Vec<TokenWithRange> = vec![];
-    //
-    //     for tr in peekable_token_iter {
-    //         match tr {
-    //             TokenWithRange {
-    //                 token: Token::Comment(_),
-    //                 ..
-    //             } => {
-    //                 // consume comments
-    //             }
-    //             _ => {
-    //                 clean_tokens.push(tr);
-    //             }
-    //         }
-    //     }
-
     clean_tokens
 }
 
@@ -51,19 +33,20 @@ mod tests {
             lexer::lex_from_str,
             token::{Token, TokenWithRange},
         },
-        error::Error,
+        AnreError,
+        location::Location,
     };
 
     use super::clean;
 
-    fn clean_lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, Error> {
+    fn clean_and_lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, AnreError> {
         let tokens = lex_from_str(s)?;
         let clean_tokens = clean(tokens);
         Ok(clean_tokens)
     }
 
-    fn clean_lex_from_str_without_location(s: &str) -> Result<Vec<Token>, Error> {
-        let tokens = clean_lex_from_str(s)?
+    fn clean_and_lex_from_str_without_location(s: &str) -> Result<Vec<Token>, AnreError> {
+        let tokens = clean_and_lex_from_str(s)?
             .into_iter()
             .map(|e| e.token)
             .collect::<Vec<Token>>();
@@ -71,16 +54,16 @@ mod tests {
     }
 
     #[test]
-    fn test_clear_comments() {
+    fn test_clean_comments() {
         assert_eq!(
-            clean_lex_from_str_without_location(
+            clean_and_lex_from_str_without_location(
                 r#"'1' // line comment 1
                 // line comment 2
-                '2' /* block comment 1 */
+                '3' /* block comment 1 */
                 /*
                 block comment 2
                 */
-                '3'
+                '7'
                 "#
             )
             .unwrap(),
@@ -88,11 +71,27 @@ mod tests {
                 Token::Char('1'),
                 Token::NewLine,
                 Token::NewLine,
-                Token::Char('2'),
-                Token::NewLine,
-                Token::NewLine,
                 Token::Char('3'),
                 Token::NewLine,
+                Token::NewLine,
+                Token::Char('7'),
+                Token::NewLine,
+            ]
+        );
+
+        assert_eq!(
+            clean_and_lex_from_str(r#"'1' /* foo */ '3'"#).unwrap(),
+            vec![
+                TokenWithRange::from_position_and_length(
+                    Token::Char('1'),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
+                    3
+                ),
+                TokenWithRange::from_position_and_length(
+                    Token::Char('3'),
+                    &Location::new_position(/*0,*/ 14, 0, 14),
+                    3
+                ),
             ]
         );
     }

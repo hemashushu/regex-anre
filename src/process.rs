@@ -8,7 +8,7 @@ use std::ops::{Index, Range};
 
 use crate::{
     compiler::{compile_from_anre, compile_from_regex},
-    error::Error,
+    AnreError,
     instance::{Instance, Thread},
     route::{Route, MAIN_LINE_INDEX},
     transition::CheckResult,
@@ -20,12 +20,12 @@ pub struct Regex {
 }
 
 impl Regex {
-    pub fn new(pattern: &str) -> Result<Self, Error> {
+    pub fn new(pattern: &str) -> Result<Self, AnreError> {
         let route = compile_from_regex(pattern)?;
         Ok(Regex { route })
     }
 
-    pub fn from_anre(expression: &str) -> Result<Self, Error> {
+    pub fn from_anre(expression: &str) -> Result<Self, AnreError> {
         let route = compile_from_anre(expression)?;
         Ok(Regex { route })
     }
