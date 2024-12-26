@@ -8,7 +8,7 @@ use std::ops::{Index, Range};
 
 use crate::{
     compiler::{compile_from_anre, compile_from_regex},
-    error::Error,
+    AnreError,
     instance::{Instance, Thread},
     route::{Route, MAIN_LINE_INDEX},
     transition::CheckResult,
@@ -20,12 +20,12 @@ pub struct Regex {
 }
 
 impl Regex {
-    pub fn new(pattern: &str) -> Result<Self, Error> {
+    pub fn new(pattern: &str) -> Result<Self, AnreError> {
         let route = compile_from_regex(pattern)?;
         Ok(Regex { route })
     }
 
-    pub fn from_anre(expression: &str) -> Result<Self, Error> {
+    pub fn from_anre(expression: &str) -> Result<Self, AnreError> {
         let route = compile_from_anre(expression)?;
         Ok(Regex { route })
     }
@@ -184,7 +184,7 @@ impl<'a, 'b> Iterator for Matches<'a, 'b> {
     }
 }
 
-impl<'a> Instance<'a> {
+impl Instance<'_> {
     pub fn exec(&mut self, route: &Route, start: usize) -> bool {
         let end = self.bytes.len();
         new_thread(self, route, MAIN_LINE_INDEX, start, end)
@@ -196,7 +196,7 @@ pub struct Captures<'a, 'b> {
     pub matches: Vec<Match<'a, 'b>>,
 }
 
-impl<'a, 'b> Captures<'a, 'b> {
+impl Captures<'_, '_> {
     // the following methods are intended to
     // be compatible with the 'Captures' API of crate 'regex':
     // https://docs.rs/regex/latest/regex/struct.Captures.html
@@ -236,7 +236,7 @@ impl<'a, 'b> Captures<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Index<usize> for Captures<'a, 'b> {
+impl Index<usize> for Captures<'_, '_> {
     type Output = str;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -248,7 +248,7 @@ impl<'a, 'b> Index<usize> for Captures<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Index<&str> for Captures<'a, 'b> {
+impl Index<&str> for Captures<'_, '_> {
     type Output = str;
 
     fn index(&self, name: &str) -> &Self::Output {

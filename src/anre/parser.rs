@@ -12,9 +12,9 @@ use crate::{
         CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
         PresetCharSetName, Program, SpecialCharName,
     },
-    error::Error,
     location::Location,
     peekableiter::PeekableIter,
+    AnreError,
 };
 
 use super::{
@@ -34,7 +34,7 @@ impl<'a> Parser<'a> {
     fn new(upstream: &'a mut PeekableIter<'a, TokenWithRange>) -> Self {
         Self {
             upstream,
-            last_range: Location::new_range(0, 0, 0, 0, 0),
+            last_range: Location::new_range(/*0,*/ 0, 0, 0, 0),
         }
     }
 
@@ -48,6 +48,13 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn peek_range(&self, offset: usize) -> Option<&Location> {
+        match self.upstream.peek(offset) {
+            Some(TokenWithRange { range, .. }) => Some(range),
+            None => None,
+        }
+    }
+
     fn peek_token(&self, offset: usize) -> Option<&Token> {
         match self.upstream.peek(offset) {
             Some(TokenWithRange { token, .. }) => Some(token),
@@ -55,10 +62,26 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_token_and_equals(&self, offset: usize, expected_token: &Token) -> bool {
+    fn expect_token(&self, offset: usize, expected_token: &Token) -> bool {
         matches!(
-            self.upstream.peek(offset),
-            Some(TokenWithRange { token, .. }) if token == expected_token)
+            self.peek_token(offset),
+            Some(token) if token == expected_token)
+    }
+
+    /// Returns:
+    /// - `None` if the specified token is not found.
+    /// - `Some(false)` found the token without new-line.
+    /// - `Some(true)` found the token and new-line.
+    fn expect_token_ignore_newline(&self, offset: usize, expected_token: &Token) -> Option<bool> {
+        if self.expect_token(offset, expected_token) {
+            Some(false)
+        } else if self.expect_token(offset, &Token::NewLine)
+            && self.expect_token(offset + 1, expected_token)
+        {
+            Some(true)
+        } else {
+            None
+        }
     }
 
     // consume '\n' if it exists.
@@ -83,81 +106,103 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect_token(
+    fn consume_token(
         &mut self,
         expected_token: &Token,
         token_description: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<(), AnreError> {
         match self.next_token() {
             Some(token) => {
                 if &token == expected_token {
                     Ok(())
                 } else {
-                    Err(Error::MessageWithLocation(
+                    Err(AnreError::MessageWithLocation(
                         format!("Expect token: {}.", token_description),
                         self.last_range.get_position_by_range_start(),
                     ))
                 }
             }
-            None => Err(Error::UnexpectedEndOfDocument(format!(
+            None => Err(AnreError::UnexpectedEndOfDocument(format!(
                 "Expect token: {}.",
                 token_description
             ))),
         }
     }
 
-    fn expect_identifier(&mut self) -> Result<String, Error> {
+    fn consume_identifier(&mut self) -> Result<String, AnreError> {
         match self.peek_token(0) {
             Some(Token::Identifier(s)) => {
                 let id = s.to_owned();
                 self.next_token();
                 Ok(id)
             }
-            Some(_) => Err(Error::MessageWithLocation(
+            Some(_) => Err(AnreError::MessageWithLocation(
                 "Expect an identifier.".to_owned(),
-                self.last_range.get_position_by_range_start(),
+                self.peek_range(0).unwrap().get_position_by_range_start(),
             )),
-            None => Err(Error::UnexpectedEndOfDocument(
+            None => Err(AnreError::UnexpectedEndOfDocument(
                 "Expect an identifier.".to_owned(),
             )),
         }
     }
 
-    fn expect_number(&mut self) -> Result<usize, Error> {
+    fn consume_number(&mut self) -> Result<usize, AnreError> {
         match self.peek_token(0) {
             Some(Token::Number(n)) => {
                 let num = *n;
                 self.next_token();
                 Ok(num)
             }
-            Some(_) => Err(Error::MessageWithLocation(
+            Some(_) => Err(AnreError::MessageWithLocation(
                 "Expect a number.".to_owned(),
-                self.last_range.get_position_by_range_start(),
+                self.peek_range(0).unwrap().get_position_by_range_start(),
             )),
-            None => Err(Error::UnexpectedEndOfDocument(
+            None => Err(AnreError::UnexpectedEndOfDocument(
                 "Expect a number.".to_owned(),
             )),
         }
     }
 
-    fn expect_char(&mut self) -> Result<char, Error> {
+    fn consume_char(&mut self) -> Result<char, AnreError> {
         match self.peek_token(0) {
             Some(Token::Char(c)) => {
                 let ch = *c;
                 self.next_token();
                 Ok(ch)
             }
-            Some(_) => Err(Error::MessageWithLocation(
+            Some(_) => Err(AnreError::MessageWithLocation(
                 "Expect a char.".to_owned(),
-                self.last_range.get_position_by_range_start(),
+                self.peek_range(0).unwrap().get_position_by_range_start(),
             )),
-            None => Err(Error::UnexpectedEndOfDocument("Expect a char.".to_owned())),
+            None => Err(AnreError::UnexpectedEndOfDocument(
+                "Expect a char.".to_owned(),
+            )),
         }
+    }
+
+    // '('
+    fn consume_left_paren(&mut self) -> Result<(), AnreError> {
+        self.consume_token(&Token::LeftParen, "left parenthese")
+    }
+
+    // ')'
+    fn consume_right_paren(&mut self) -> Result<(), AnreError> {
+        self.consume_token(&Token::RightParen, "right parenthese")
+    }
+
+    // ']'
+    fn consume_right_bracket(&mut self) -> Result<(), AnreError> {
+        self.consume_token(&Token::RightBracket, "right bracket")
+    }
+
+    // '}'
+    fn consume_right_brace(&mut self) -> Result<(), AnreError> {
+        self.consume_token(&Token::RightBrace, "right brace")
     }
 }
 
-impl<'a> Parser<'a> {
-    pub fn parse_program(&mut self) -> Result<Program, Error> {
+impl Parser<'_> {
+    pub fn parse_program(&mut self) -> Result<Program, AnreError> {
         let mut expressions = vec![];
 
         while self.peek_token(0).is_some() {
@@ -171,9 +216,9 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // extract elements from a group if the group
-        // contains only one element and the element's type
-        // is 'Group'
+        // extract elements from a group if the group contains only one element
+        // and the element's type is 'Group'
+
         let program = if expressions.len() == 1
             && matches!(expressions.first().unwrap(), Expression::Group(_))
         {
@@ -190,7 +235,7 @@ impl<'a> Parser<'a> {
         Ok(program)
     }
 
-    fn parse_expression(&mut self) -> Result<Expression, Error> {
+    fn parse_expression(&mut self) -> Result<Expression, AnreError> {
         // token ...
         // -----
         // ^
@@ -208,7 +253,7 @@ impl<'a> Parser<'a> {
         self.parse_logic_or()
     }
 
-    fn parse_logic_or(&mut self) -> Result<Expression, Error> {
+    fn parse_logic_or(&mut self) -> Result<Expression, AnreError> {
         // token ... [ "||" expression ]
         // -----
         // ^
@@ -216,42 +261,58 @@ impl<'a> Parser<'a> {
 
         let mut left = self.parse_notation_and_rear_function_call()?;
 
-        while let Some(Token::LogicOr) = self.peek_token(0) {
-            self.next_token(); // consume "||"
-            self.consume_new_line_if_exist(); // consume trailing new-line
+        // while let Some(Token::LogicOr) = self.peek_token(0) {
+        while self.peek_token(0).is_some() {
+            match self.expect_token_ignore_newline(0, &Token::LogicOr) {
+                Some(exists_new_line) => {
+                    if exists_new_line {
+                        self.next_token(); // consume '\n'
+                    }
 
-            // Operator associativity
-            // - https://en.wikipedia.org/wiki/Operator_associativity
-            // - https://en.wikipedia.org/wiki/Operators_in_C_and_C%2B%2B#Operator_precedence
-            //
-            // left-associative, left-to-right associative
-            // a || b || c -> (a || b) || c
-            //
-            // right-associative, righ-to-left associative
-            // a || b || c -> a || (b || c)
-            //
-            // note:
-            // using `parse_expression` for right-to-left associative, e.g.
-            // `let right = self.parse_expression()?;`
-            // or
-            // using `parse_notation_and_rear_function_call` for left-to-right associative, e.g.
-            // `let right = self.parse_notation_and_rear_function_call()?;`
-            //
-            // for the current interpreter, it is more efficient by using right-associative.
+                    self.next_token(); // consume "||"
+                    self.consume_new_line_if_exist(); // consume trailing new-line
 
-            let right = self.parse_expression()?;
-            let expression = Expression::Or(Box::new(left), Box::new(right));
-            left = expression;
+                    // Operator associativity
+                    // - https://en.wikipedia.org/wiki/Operator_associativity
+                    // - https://en.wikipedia.org/wiki/Operators_in_C_and_C%2B%2B#Operator_precedence
+                    //
+                    // left-associative, left-to-right associative
+                    // a || b || c -> (a || b) || c
+                    //
+                    // right-associative, righ-to-left associative
+                    // a || b || c -> a || (b || c)
+                    //
+                    // note:
+                    // using `parse_expression` for right-to-left associative, e.g.
+                    // `let right = self.parse_expression()?;`
+                    // or
+                    // using `parse_notation_and_rear_function_call` for left-to-right associative, e.g.
+                    // `let right = self.parse_notation_and_rear_function_call()?;`
+                    //
+                    // for the current interpreter, it is more efficient by using right-associative.
+
+                    let right = self.parse_expression()?;
+                    let expression = Expression::Or(Box::new(left), Box::new(right));
+                    left = expression;
+                }
+                None => {
+                    break;
+                }
+            }
         }
 
         Ok(left)
     }
 
-    fn parse_notation_and_rear_function_call(&mut self) -> Result<Expression, Error> {
+    fn parse_notation_and_rear_function_call(&mut self) -> Result<Expression, AnreError> {
         // token ... [ notations | ("." identifier "(" ...)]
         // -----
         // ^
         // | current, None or Some(...)
+        //
+        // the new-line rules:
+        // - 'expression' notations
+        // - 'expression' newline? '.' newline? identifier newline? ( ... )
 
         let mut expression = self.parse_primary_expression()?;
 
@@ -281,8 +342,8 @@ impl<'a> Parser<'a> {
 
                     let function_call = FunctionCall {
                         name,
-                        expression: Box::new(expression),
-                        args: vec![],
+                        // expression: Box::new(expression),
+                        args: vec![FunctionCallArg::Expression(Box::new(expression))],
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
 
@@ -294,11 +355,12 @@ impl<'a> Parser<'a> {
                     let (notation_quantifier, lazy) = self.continue_parse_notation_quantifier()?;
 
                     let mut args = vec![];
+                    args.push(FunctionCallArg::Expression(Box::new(expression)));
 
                     let name = match notation_quantifier {
                         NotationQuantifier::Repeat(n) => {
                             if lazy {
-                                return Err(Error::MessageWithLocation(
+                                return Err(AnreError::MessageWithLocation(
                                     "Specified number of repetitions does not support lazy mode, i.e. '{m}?' is not allowed.".to_owned(), self.last_range));
                             }
 
@@ -307,7 +369,7 @@ impl<'a> Parser<'a> {
                         }
                         NotationQuantifier::RepeatRange(m, n) => {
                             if lazy && m == n {
-                                return Err(Error::MessageWithLocation(
+                                return Err(AnreError::MessageWithLocation(
                                     "Specified number of repetitions does not support lazy mode, i.e. '{m,m}?' is not allowed.".to_owned(), self.last_range));
                             }
 
@@ -333,30 +395,22 @@ impl<'a> Parser<'a> {
 
                     let function_call = FunctionCall {
                         name,
-                        expression: Box::new(expression),
+                        // expression: Box::new(expression),
                         args,
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
                 }
-                Token::NewLine
-                    if matches!(self.peek_token(1), Some(Token::Dot))
-                        && matches!(self.peek_token(2), Some(Token::Identifier(_)))
-                        && self.peek_token_and_equals(3, &Token::LeftParen) =>
-                {
-                    self.next_token(); // consume the new-line
-
-                    let function_call = self.continue_parse_rear_function_call(expression)?;
-                    expression = Expression::FunctionCall(Box::new(function_call));
-                }
-                Token::Dot
-                    if matches!(self.peek_token(1), Some(Token::Identifier(_)))
-                        && self.peek_token_and_equals(2, &Token::LeftParen) =>
-                {
-                    let function_call = self.continue_parse_rear_function_call(expression)?;
-                    expression = Expression::FunctionCall(Box::new(function_call));
-                }
                 _ => {
-                    break;
+                    if let Some(exists_newline) = self.expect_token_ignore_newline(0, &Token::Dot) {
+                        if exists_newline {
+                            self.next_token(); // consume '\n'
+                        }
+
+                        let function_call = self.continue_parse_rear_function_call(expression)?;
+                        expression = Expression::FunctionCall(Box::new(function_call));
+                    } else {
+                        break;
+                    }
                 }
             }
         }
@@ -364,7 +418,9 @@ impl<'a> Parser<'a> {
         Ok(expression)
     }
 
-    fn continue_parse_notation_quantifier(&mut self) -> Result<(NotationQuantifier, bool), Error> {
+    fn continue_parse_notation_quantifier(
+        &mut self,
+    ) -> Result<(NotationQuantifier, bool), AnreError> {
         // {m, n}? ?
         // -       -
         // ^       ^__ to here
@@ -373,14 +429,14 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume '{'
         self.consume_new_line_if_exist(); // consume trailing new-line
 
-        let from = self.expect_number()?;
+        let from = self.consume_number()?;
 
         // the comma that follows the first number is NOT a separator, it
         // can not be replaced by a newline like a normal comma,
         // its presence indicates that there is a second number, or that
         // the value of the second number is infinite.
 
-        let (dual, to_optional) = if self.peek_token_and_equals(0, &Token::Comma) {
+        let (dual, to_optional) = if self.expect_token(0, &Token::Comma) {
             // example:
             //
             // `{m,}` `{m,n}`
@@ -407,7 +463,7 @@ impl<'a> Parser<'a> {
             };
 
             (true, to_optional)
-        } else if self.peek_token_and_equals(0, &Token::NewLine)
+        } else if self.expect_token(0, &Token::NewLine)
             && matches!(self.peek_token(1), Some(Token::Number(_)))
         {
             // example:
@@ -442,9 +498,9 @@ impl<'a> Parser<'a> {
         };
 
         self.consume_new_line_if_exist();
-        self.expect_token(&Token::RightBrace, "right brace \"}\"")?; // consume '}'
+        self.consume_right_brace()?; // consume '}'
 
-        let lazy = if self.peek_token_and_equals(0, &Token::Question) {
+        let lazy = if self.expect_token(0, &Token::Question) {
             self.next_token(); // consume trailing '?'
             true
         } else {
@@ -467,22 +523,29 @@ impl<'a> Parser<'a> {
     fn continue_parse_rear_function_call(
         &mut self,
         expression: Expression,
-    ) -> Result<FunctionCall, Error> {
-        // "." identifier "(" {args} ")" ?
-        // --- ---------- ---            -
-        // ^   ^          ^__ validated  ^ to here
-        // |   |__ validated
+    ) -> Result<FunctionCall, AnreError> {
+        // "." identifier "(" {args} ")"     ?
+        // --- ---------- ---                -
+        // ^   ^          ^__ NOT validated  ^ to here
+        // |   |__ NOT validated
         // | current, validated
 
-        self.next_token(); // consume '.'
+        // newline rules:
+        // . newline? identifier newline? '(...)'
 
-        let name_string = self.expect_identifier()?; // consume function name
+        self.next_token(); // consume '.'
+        self.consume_new_line_if_exist();
+
+        let name_string = self.consume_identifier()?; // consume function name
+        self.consume_new_line_if_exist();
+
         let name = function_name_from_str(&name_string, &self.last_range)?;
 
-        self.next_token(); // consume '('
+        self.consume_left_paren()?; // consume '('
         self.consume_new_line_if_exist(); // consume trailing new-line
 
         let mut args = vec![];
+        args.push(FunctionCallArg::Expression(Box::new(expression)));
 
         while let Some(token) = self.peek_token(0) {
             if token == &Token::RightParen {
@@ -512,18 +575,18 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::RightParen, "right parenthese \")\"")?; // consume ')'
+        self.consume_right_paren()?; // consume ')'
 
         let function_call = FunctionCall {
             name,
-            expression: Box::new(expression),
+            // expression: Box::new(expression),
             args,
         };
 
         Ok(function_call)
     }
 
-    fn parse_primary_expression(&mut self) -> Result<Expression, Error> {
+    fn parse_primary_expression(&mut self) -> Result<Expression, AnreError> {
         // token ...
         // ---------
         // ^
@@ -531,10 +594,11 @@ impl<'a> Parser<'a> {
 
         // primary expressions:
         // - literal
-        // - identifier
+        // - identifier (backreference)
         // - assertion
         // - group
         // - function call
+
         let expression = match self.peek_token(0) {
             Some(token) => {
                 match token {
@@ -542,7 +606,11 @@ impl<'a> Parser<'a> {
                         // group
                         self.parse_group()?
                     }
-                    Token::Identifier(_) if self.peek_token_and_equals(1, &Token::LeftParen) => {
+                    Token::Identifier(_)
+                        if self
+                            .expect_token_ignore_newline(1, &Token::LeftParen)
+                            .is_some() =>
+                    {
                         // function call
                         self.parse_function_call()?
                     }
@@ -573,7 +641,7 @@ impl<'a> Parser<'a> {
                 }
             }
             None => {
-                return Err(Error::UnexpectedEndOfDocument(
+                return Err(AnreError::UnexpectedEndOfDocument(
                     "Expect an expression.".to_owned(),
                 ));
             }
@@ -582,13 +650,13 @@ impl<'a> Parser<'a> {
         Ok(expression)
     }
 
-    fn parse_group(&mut self) -> Result<Expression, Error> {
+    fn parse_group(&mut self) -> Result<Expression, AnreError> {
         // "(" {expression} ")" ?
         // ---                  -
         // ^                    ^-- to here
         // | current, validated
 
-        self.expect_token(&Token::LeftParen, "left parenthese \"(\"")?; // consume "("
+        self.next_token(); // consume "("
         self.consume_new_line_if_exist(); // consume trailing new-line
 
         let mut expressions: Vec<Expression> = vec![];
@@ -607,7 +675,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::RightParen, "right parenthese \")\"")?; // consume ")"
+        self.consume_right_paren()?; // consume ")"
 
         // escape the group if it contains only one element
         if expressions.len() == 1 {
@@ -618,22 +686,28 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_function_call(&mut self) -> Result<Expression, Error> {
+    fn parse_function_call(&mut self) -> Result<Expression, AnreError> {
         // identifier "(" expression ["," args... ] ")" ?
         // ---------- ---                               -
         // ^          ^__ validated                     ^__ to here
         // | current, validated
 
-        let name_string = self.expect_identifier()?;
+        // newline rules:
+        // identifier newline? '(' newline? expression newline/comma ... ')'
+
+        let name_string = self.consume_identifier()?;
+        self.consume_new_line_if_exist();
+
         let name = function_name_from_str(&name_string, &self.last_range)?;
 
-        self.next_token(); // consume '('
+        self.consume_left_paren()?; // consume '('
         self.consume_new_line_if_exist(); // consume trailing new-line
 
-        let expression = self.parse_expression()?;
-        self.consume_new_line_or_comma_if_exist(); // consume trailing new-line
+        // let expression = self.parse_expression()?;
+        // self.consume_new_line_or_comma_if_exist(); // consume trailing new-line
 
         let mut args = vec![];
+
         while let Some(token) = self.peek_token(0) {
             if token == &Token::RightParen {
                 break;
@@ -645,7 +719,11 @@ impl<'a> Parser<'a> {
                     self.next_token(); // consume number
                     args.push(FunctionCallArg::Number(num));
                 }
-                Token::Identifier(id_ref) => {
+                Token::Identifier(id_ref)
+                    if self
+                        .expect_token_ignore_newline(1, &Token::LeftParen)
+                        .is_none() =>
+                {
                     let id = id_ref.to_owned();
                     self.next_token(); // consume identifier
                     args.push(FunctionCallArg::Identifier(id));
@@ -662,18 +740,18 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::RightParen, "right parenthese \")\"")?; // consume ')'
+        self.consume_right_paren()?; // consume ')'
 
         let function_call = FunctionCall {
             name,
-            expression: Box::new(expression),
+            // expression: Box::new(expression),
             args,
         };
 
         Ok(Expression::FunctionCall(Box::new(function_call)))
     }
 
-    fn parse_literal(&mut self) -> Result<Literal, Error> {
+    fn parse_literal(&mut self) -> Result<Literal, AnreError> {
         // token ...
         // -----
         // ^
@@ -696,7 +774,7 @@ impl<'a> Parser<'a> {
                             elements,
                         })
                     }
-                    Token::Exclamation if self.peek_token_and_equals(1, &Token::LeftBracket) => {
+                    Token::Exclamation if self.expect_token(1, &Token::LeftBracket) => {
                         // negative charset
                         self.next_token();
 
@@ -731,7 +809,7 @@ impl<'a> Parser<'a> {
                         Literal::Special(special_char_name)
                     }
                     _ => {
-                        return Err(Error::MessageWithLocation(
+                        return Err(AnreError::MessageWithLocation(
                             "Expect a literal.".to_owned(),
                             self.last_range,
                         ));
@@ -746,7 +824,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_charset(&mut self) -> Result<Vec<CharSetElement>, Error> {
+    fn parse_charset(&mut self) -> Result<Vec<CharSetElement>, AnreError> {
         // "[" {char | char_range | preset_charset | char_set} "]" ?
         // ---                                                   -
         // ^                                                     ^__ to here
@@ -762,11 +840,7 @@ impl<'a> Parser<'a> {
             }
 
             match token {
-                Token::Char(_)
-                    if self.peek_token_and_equals(1, &Token::Interval)
-                        || (self.peek_token_and_equals(1, &Token::NewLine)
-                            && self.peek_token_and_equals(2, &Token::Interval)) =>
-                {
+                Token::Char(_) if self.expect_token_ignore_newline(1, &Token::Range).is_some() => {
                     // char range
                     let char_range = self.parse_char_range()?;
                     elements.push(CharSetElement::CharRange(char_range));
@@ -795,7 +869,7 @@ impl<'a> Parser<'a> {
                     elements.push(CharSetElement::CharSet(Box::new(custom_charset)));
                 }
                 _ => {
-                    return Err(Error::MessageWithLocation(
+                    return Err(AnreError::MessageWithLocation(
                         "Unexpected char set element.".to_owned(),
                         self.last_range,
                     ));
@@ -808,25 +882,25 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_token(&Token::RightBracket, "right bracket \"]\"")?;
+        self.consume_right_bracket()?; // consume ']'
 
         Ok(elements)
     }
 
-    fn parse_char_range(&mut self) -> Result<CharRange, Error> {
+    fn parse_char_range(&mut self) -> Result<CharRange, AnreError> {
         // 'c' [new-line] '..' 'c' ?
         // ---  --------  ----     -
         // ^    ^         ^        ^__ to here
         // |    | vali..  | validated
         // | current, validated
 
-        let char_start = self.expect_char()?; // consume start char
+        let char_start = self.consume_char()?; // consume start char
         self.consume_new_line_if_exist();
 
         self.next_token(); // consume '..'
         self.consume_new_line_if_exist();
 
-        let char_end = self.expect_char()?; // consume end char
+        let char_end = self.consume_char()?; // consume end char
 
         Ok(CharRange {
             start: char_start,
@@ -844,14 +918,14 @@ enum NotationQuantifier {
 fn anchor_assertion_name_from_str(
     name_str: &str,
     range: &Location,
-) -> Result<AnchorAssertionName, Error> {
+) -> Result<AnchorAssertionName, AnreError> {
     let name = match name_str {
         "start" => AnchorAssertionName::Start,
         "end" => AnchorAssertionName::End,
 
         // Unexpect
         _ => {
-            return Err(Error::MessageWithLocation(
+            return Err(AnreError::MessageWithLocation(
                 format!("Unexpect anchor assertion name: \"{}\"", name_str),
                 range.to_owned(),
             ))
@@ -864,14 +938,14 @@ fn anchor_assertion_name_from_str(
 fn boundary_assertion_name_from_str(
     name_str: &str,
     range: &Location,
-) -> Result<BoundaryAssertionName, Error> {
+) -> Result<BoundaryAssertionName, AnreError> {
     let name = match name_str {
         "is_bound" => BoundaryAssertionName::IsBound,
         "is_not_bound" => BoundaryAssertionName::IsNotBound,
 
         // Unexpect
         _ => {
-            return Err(Error::MessageWithLocation(
+            return Err(AnreError::MessageWithLocation(
                 format!("Unexpect boundary assertion name: \"{}\"", name_str),
                 range.to_owned(),
             ))
@@ -881,13 +955,16 @@ fn boundary_assertion_name_from_str(
     Ok(name)
 }
 
-fn special_char_name_from_str(name_str: &str, range: &Location) -> Result<SpecialCharName, Error> {
+fn special_char_name_from_str(
+    name_str: &str,
+    range: &Location,
+) -> Result<SpecialCharName, AnreError> {
     let name = match name_str {
         "char_any" => SpecialCharName::CharAny,
 
         // Unexpect
         _ => {
-            return Err(Error::MessageWithLocation(
+            return Err(AnreError::MessageWithLocation(
                 format!("Unexpect special character name: \"{}\"", name_str),
                 range.to_owned(),
             ))
@@ -900,7 +977,7 @@ fn special_char_name_from_str(name_str: &str, range: &Location) -> Result<Specia
 fn preset_charset_name_from_str(
     name_str: &str,
     range: &Location,
-) -> Result<PresetCharSetName, Error> {
+) -> Result<PresetCharSetName, AnreError> {
     let name = match name_str {
         "char_word" => PresetCharSetName::CharWord,
         "char_not_word" => PresetCharSetName::CharNotWord,
@@ -911,7 +988,7 @@ fn preset_charset_name_from_str(
 
         // Unexpect
         _ => {
-            return Err(Error::MessageWithLocation(
+            return Err(AnreError::MessageWithLocation(
                 format!("Unexpect preset charset name: \"{}\"", name_str),
                 range.to_owned(),
             ))
@@ -921,7 +998,7 @@ fn preset_charset_name_from_str(
     Ok(name)
 }
 
-fn function_name_from_str(name_str: &str, range: &Location) -> Result<FunctionName, Error> {
+fn function_name_from_str(name_str: &str, range: &Location) -> Result<FunctionName, AnreError> {
     let name = match name_str {
         // Greedy Quantifier
         "optional" => FunctionName::Optional,
@@ -950,7 +1027,7 @@ fn function_name_from_str(name_str: &str, range: &Location) -> Result<FunctionNa
 
         // Unexpect
         _ => {
-            return Err(Error::MessageWithLocation(
+            return Err(AnreError::MessageWithLocation(
                 format!("Unexpect function name: \"{}\"", name_str),
                 range.to_owned(),
             ))
@@ -960,7 +1037,7 @@ fn function_name_from_str(name_str: &str, range: &Location) -> Result<FunctionNa
     Ok(name)
 }
 
-pub fn parse_from_str(s: &str) -> Result<Program, Error> {
+pub fn parse_from_str(s: &str) -> Result<Program, AnreError> {
     let tokens = lex_from_str(s)?;
     let clean_tokens = clean(tokens);
     let normalized_tokens = normalize(clean_tokens);
@@ -981,7 +1058,7 @@ mod tests {
         ast::{
             CharRange, CharSet, CharSetElement, Expression, Literal, PresetCharSetName, Program,
         },
-        error::Error,
+        AnreError,
     };
 
     use super::parse_from_str;
@@ -1115,6 +1192,7 @@ zero_or_more_lazy('c')
 name("xyz", prefix)"#
         );
 
+        // test multiline args
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1138,6 +1216,7 @@ repeat_range('b', 5, 7)
 at_least('c', 11)"#
         );
 
+        // test expressions as args
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1161,10 +1240,12 @@ is_after("bar", "foo" || 'f'{3})
         assert_eq!(
             parse_from_str(
                 r#"
-optional(
-    one_or_more(
-        'a'
-    )
+optional
+(
+one_or_more
+(
+'a'
+)
 )"#
             )
             .unwrap()
@@ -1192,6 +1273,7 @@ zero_or_more_lazy('c')
 name("xyz", prefix)"#
         );
 
+        // test multiline args
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1211,6 +1293,7 @@ repeat_range('b', 5, 7)
 at_least('c', 11)"#
         );
 
+        // test expressions as args
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1222,7 +1305,7 @@ at_least('c', 11)"#
             r#"is_after("bar", "foo" || repeat('f', 3))"#
         );
 
-        // chaining call
+        // test chaining
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1234,12 +1317,17 @@ at_least('c', 11)"#
             r#"is_before(repeat_range(['a'..'z'], 2, 7), "ing" || "ed")"#
         );
 
+        // test multiline
         assert_eq!(
             parse_from_str(
                 r#"
 ['a'..'z']
-    .repeat_range(2, 7)
-    .is_before("ing" || "ed")
+.
+repeat_range
+(2, 7)
+.
+is_before
+("ing" || "ed")
             "#,
             )
             .unwrap()
@@ -1297,7 +1385,7 @@ at_least_lazy('z', 11)"#
 'a'{3}?
 "#,
             ),
-            Err(Error::MessageWithLocation(_, _))
+            Err(AnreError::MessageWithLocation(_, _))
         ));
 
         // err: '{m,m}?' is not allowed
@@ -1307,7 +1395,7 @@ at_least_lazy('z', 11)"#
 'a'{3,3}?
 "#,
             ),
-            Err(Error::MessageWithLocation(_, _))
+            Err(AnreError::MessageWithLocation(_, _))
         ));
     }
 
@@ -1334,6 +1422,7 @@ at_least_lazy('z', 11)"#
             assert_eq!(program.to_string(), r#"'a' || 'b'"#);
         }
 
+        // more than 2 operands
         {
             let program = parse_from_str(
                 r#"
@@ -1358,6 +1447,7 @@ at_least_lazy('z', 11)"#
             assert_eq!(program.to_string(), r#"'a' || ('b' || 'c')"#);
         }
 
+        // test expressions as operands
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1368,6 +1458,30 @@ char_digit.one_or_more() || [char_word, '-']+
             .to_string(),
             r#"one_or_more(char_digit) || one_or_more([char_word, '-'])"#
         );
+
+        // test multiline
+        {
+            let program = parse_from_str(
+                r#"
+'a'
+||
+'b'
+"#,
+            )
+            .unwrap();
+
+            assert_eq!(
+                program,
+                Program {
+                    expressions: vec![Expression::Or(
+                        Box::new(Expression::Literal(Literal::Char('a'))),
+                        Box::new(Expression::Literal(Literal::Char('b'))),
+                    )]
+                }
+            );
+
+            assert_eq!(program.to_string(), r#"'a' || 'b'"#);
+        }
     }
 
     #[test]
@@ -1385,6 +1499,7 @@ end
             r#"("foo", char_digit), ('b', ("bar", char_digit)), end"#
         );
 
+        // function call + group
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1399,6 +1514,7 @@ end
 ('b', repeat("bar", 5)), end"#
         );
 
+        // logic or + group
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1410,6 +1526,7 @@ end
             r#"'a' || ('b' || 'c')"#
         );
 
+        // group + logic or
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1421,6 +1538,7 @@ end
             r#"('a' || 'b') || 'c'"#
         );
 
+        // group + logic or + group
         assert_eq!(
             parse_from_str(
                 r#"
@@ -1438,12 +1556,30 @@ end
         assert_eq!(
             parse_from_str(
                 r#"
-(('a', char_digit, 'b'))
+((('a', char_digit, 'b')))
 "#,
             )
             .unwrap()
             .to_string(),
             r#"'a', char_digit, 'b'"#
+        );
+
+        // multiline
+        assert_eq!(
+            parse_from_str(
+                r#"
+(
+'b'
+(
+"bar"
+char_digit
+)
+)
+"#,
+            )
+            .unwrap()
+            .to_string(),
+            r#"'b', ("bar", char_digit)"#
         );
     }
 

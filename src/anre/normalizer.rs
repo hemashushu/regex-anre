@@ -128,20 +128,20 @@ mod tests {
             lexer::lex_from_str,
             token::{Token, TokenWithRange},
         },
-        error::Error,
+        AnreError,
         location::Location,
     };
 
     use super::normalize;
 
-    fn clean_and_normalize_lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, Error> {
+    fn clean_and_normalize_lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, AnreError> {
         let tokens = lex_from_str(s)?;
         let clean_tokens = clean(tokens);
         let normalized_tokens = normalize(clean_tokens);
         Ok(normalized_tokens)
     }
 
-    fn clean_and_normalize_lex_from_str_without_location(s: &str) -> Result<Vec<Token>, Error> {
+    fn clean_and_normalize_lex_from_str_without_location(s: &str) -> Result<Vec<Token>, AnreError> {
         let tokens = clean_and_normalize_lex_from_str(s)?
             .into_iter()
             .map(|e| e.token)
@@ -224,17 +224,17 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Char('1'),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Location::new_position(0, 3, 0, 3),
+                    &Location::new_position(/*0,*/ 3, 0, 3),
                     6
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Char('2'),
-                    &Location::new_position(0, 9, 3, 0),
+                    &Location::new_position(/*0,*/ 9, 3, 0),
                     3
                 ),
             ]
@@ -246,12 +246,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Char('1'),
-                    &Location::new_position(0, 4, 3, 0),
+                    &Location::new_position(/*0,*/ 4, 3, 0),
                     3
                 ),
             ]
@@ -263,12 +263,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Char('1'),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new_position(0, 6, 3, 0),
+                    &Location::new_position(/*0,*/ 6, 3, 0),
                     1
                 ),
             ]
@@ -280,17 +280,17 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Char('1'),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new_position(0, 5, 2, 0),
+                    &Location::new_position(/*0,*/ 5, 2, 0),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Char('2'),
-                    &Location::new_position(0, 8, 4, 0),
+                    &Location::new_position(/*0,*/ 8, 4, 0),
                     3
                 ),
             ]
@@ -302,12 +302,12 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     1
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Comma,
-                    &Location::new_position(0, 7, 1, 0),
+                    &Location::new_position(/*0,*/ 7, 1, 0),
                     1
                 ),
             ]
@@ -319,17 +319,17 @@ mod tests {
             vec![
                 TokenWithRange::from_position_and_length(
                     Token::Char('1'),
-                    &Location::new_position(0, 0, 0, 0),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
                     3
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::NewLine,
-                    &Location::new_position(0, 3, 0, 3),
+                    &Location::new_position(/*0,*/ 3, 0, 3),
                     9
                 ),
                 TokenWithRange::from_position_and_length(
                     Token::Char('2'),
-                    &Location::new_position(0, 12, 4, 0),
+                    &Location::new_position(/*0,*/ 12, 4, 0),
                     3
                 ),
             ]
@@ -337,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_trim() {
+    fn test_normalize_trim_blanks() {
         assert_eq!(
             clean_and_normalize_lex_from_str_without_location(
                 r#"

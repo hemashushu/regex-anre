@@ -18,7 +18,7 @@ pub enum Token {
     Exclamation,
 
     // ..
-    Interval,
+    Range,
 
     // .
     Dot,
@@ -30,7 +30,6 @@ pub enum Token {
     LeftBracket,
     // ]
     RightBracket,
-
     // (
     LeftParen,
     // )
@@ -48,31 +47,32 @@ pub enum Token {
     String(String),
     Comment(Comment),
 
-    /*
-     * Notations/Symbols
-     */
-    // ?
+    //
+    // Notations/Symbols
+    //
+
+    // '?'
     Question,
 
-    // ??
+    // '??'
     QuestionLazy,
 
-    // +
+    // '+'
     Plus,
 
-    // +?
+    // '+?'
     PlusLazy,
 
-    // *
+    // '*'
     Asterisk,
 
-    // *?
+    // '*?'
     AsteriskLazy,
 
-    // {
+    // '{'
     LeftBrace,
 
-    // }
+    // '}'
     RightBrace,
 }
 
@@ -85,41 +85,6 @@ pub enum Comment {
     // `/*...*/`
     Block(String),
 }
-
-// impl Token {
-//     // for printing
-//     pub fn get_description(&self) -> String {
-//         match self {
-//             Token::NewLine => "new line".to_owned(),
-//             Token::Comma => "comma \",\"".to_owned(),
-//             Token::LeftBracket => "left bracket \"[\"".to_owned(),
-//             Token::RightBracket => "right bracket \"]\"".to_owned(),
-//             Token::LeftParen => "left parenthese \"(\"".to_owned(),
-//             Token::RightParen => "right parenthese \")\"".to_owned(),
-//             Token::Exclamation => "exclamation point \"!\"".to_owned(),
-//             Token::Interval => "interval \"..\"".to_owned(),
-//             Token::Dot => "dot \".\"".to_owned(),
-//             Token::LogicOr => "logic or \"||\"".to_owned(),
-//             Token::Identifier(s) => format!("identifier \"{}\"", s),
-//             Token::PresetCharSet(s) => format!("preset charset \"{}\"", s),
-//             Token::Special(s) => format!("special \"{}\"", s),
-//             Token::AnchorAssertion(s) => format!("anchor assertion \"{}\"", s),
-//             Token::BoundaryAssertion(s) => format!("boundary assertion \"{}\"", s),
-//             Token::Number(i) => format!("number \"{}\"", i),
-//             Token::Char(c) => format!("char \"{}\"", c),
-//             Token::String(_) => "string".to_owned(),
-//             Token::Comment(_) => "comment".to_owned(),
-//             Token::Question => "question mark \"?\"".to_owned(),
-//             Token::QuestionLazy => "question and question mark \"??\"".to_owned(),
-//             Token::Plus => "plus sign \"+\"".to_owned(),
-//             Token::PlusLazy => "plus and question mark \"+?\"".to_owned(),
-//             Token::Asterisk => "asterisk \"*\"".to_owned(),
-//             Token::AsteriskLazy => "asterisk and question mark \"*?\"".to_owned(),
-//             Token::LeftBrace => "left brace \"{\"".to_owned(),
-//             Token::RightBrace => "right brace \"}\"".to_owned(),
-//         }
-//     }
-// }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TokenWithRange {

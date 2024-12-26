@@ -10,7 +10,6 @@ use crate::{
         CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
         PresetCharSetName, Program,
     },
-    error::Error,
     route::{Line, Route},
     rulechecker::{get_match_length, MatchLength},
     transition::{
@@ -22,19 +21,20 @@ use crate::{
         LookBehindAssertionTransition, RepetitionTransition, RepetitionType, SpecialCharTransition,
         StringTransition, Transition,
     },
+    AnreError,
 };
 
-pub fn compile_from_regex(s: &str) -> Result<Route, Error> {
+pub fn compile_from_regex(s: &str) -> Result<Route, AnreError> {
     let program = crate::tradition::parse_from_str(s)?;
     compile(&program)
 }
 
-pub fn compile_from_anre(s: &str) -> Result<Route, Error> {
+pub fn compile_from_anre(s: &str) -> Result<Route, AnreError> {
     let program = crate::anre::parse_from_str(s)?;
     compile(&program)
 }
 
-pub fn compile(program: &Program) -> Result<Route, Error> {
+pub fn compile(program: &Program) -> Result<Route, AnreError> {
     let mut route = Route::new();
     let mut compiler = Compiler::new(program, &mut route);
     compiler.compile()?;
@@ -67,11 +67,11 @@ impl<'a> Compiler<'a> {
         &mut self.route.lines[self.current_line_index]
     }
 
-    fn compile(&mut self) -> Result<(), Error> {
+    fn compile(&mut self) -> Result<(), AnreError> {
         self.emit_program(self.program)
     }
 
-    fn emit_program(&mut self, program: &Program) -> Result<(), Error> {
+    fn emit_program(&mut self, program: &Program) -> Result<(), AnreError> {
         // the `Program` node is actually a `Group` which omits the parentheses,
         // in addition, there may be the 'start' and 'end' assertions.
 
@@ -89,7 +89,7 @@ impl<'a> Compiler<'a> {
                 Expression::AnchorAssertion(AnchorAssertionName::Start)
             ) {
                 if expression_index != 0 {
-                    return Err(Error::Message(
+                    return Err(AnreError::SyntaxIncorrect(
                         "The assertion \"start\" can only be present at the beginning of expression."
                             .to_owned(),
                     ));
@@ -102,7 +102,7 @@ impl<'a> Compiler<'a> {
                 Expression::AnchorAssertion(AnchorAssertionName::End)
             ) {
                 if expression_index != expressions.len() - 1 {
-                    return Err(Error::Message(
+                    return Err(AnreError::SyntaxIncorrect(
                         "The assertion \"end\" can only be present at the end of expression."
                             .to_owned(),
                     ));
@@ -168,18 +168,18 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    fn emit_expression(&mut self, expression: &Expression) -> Result<Port, Error> {
+    fn emit_expression(&mut self, expression: &Expression) -> Result<Port, AnreError> {
         let result = match expression {
             Expression::Literal(literal) => self.emit_literal(literal)?,
             Expression::BackReference(back_reference) => self.emit_backreference(back_reference)?,
             Expression::AnchorAssertion(name) => {
                 match name {
                     AnchorAssertionName::Start => {
-                        return Err(Error::Message(
+                        return Err(AnreError::SyntaxIncorrect(
                             "The assertion \"start\" can only exist at the beginning of an expression.".to_owned()));
                     }
                     AnchorAssertionName::End => {
-                        return Err(Error::Message(
+                        return Err(AnreError::SyntaxIncorrect(
                             "The assertion \"end\" can only exist at the end of an expression."
                                 .to_owned(),
                         ));
@@ -195,7 +195,7 @@ impl<'a> Compiler<'a> {
         Ok(result)
     }
 
-    fn emit_group(&mut self, expressions: &[Expression]) -> Result<Port, Error> {
+    fn emit_group(&mut self, expressions: &[Expression]) -> Result<Port, AnreError> {
         /*
          * the "group" of ANRE is different from the "group" of
          * ordinary regular expressions.
@@ -248,7 +248,7 @@ impl<'a> Compiler<'a> {
         Ok(port)
     }
 
-    fn emit_logic_or(&mut self, left: &Expression, right: &Expression) -> Result<Port, Error> {
+    fn emit_logic_or(&mut self, left: &Expression, right: &Expression) -> Result<Port, AnreError> {
         //                    left
         //         jump   /-----------\   jump
         //      /--------==o in  out o==--------\
@@ -294,9 +294,14 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_state_index, out_state_index))
     }
 
-    fn emit_function_call(&mut self, function_call: &FunctionCall) -> Result<Port, Error> {
-        let expression = &function_call.expression;
-        let args = &function_call.args;
+    fn emit_function_call(&mut self, function_call: &FunctionCall) -> Result<Port, AnreError> {
+        let expression = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
+            e
+        } else {
+            unreachable!()
+        };
+
+        let args = &function_call.args[1..];
 
         let is_lazy = matches!(
             function_call.name,
@@ -356,7 +361,7 @@ impl<'a> Compiler<'a> {
                 };
 
                 if from > to {
-                    return Err(Error::Message(
+                    return Err(AnreError::SyntaxIncorrect(
                         "Repeated range values should be from small to large.".to_owned(),
                     ));
                 }
@@ -411,6 +416,13 @@ impl<'a> Compiler<'a> {
             // Assertions
             FunctionName::IsBefore | FunctionName::IsNotBefore => {
                 // lookahead assertion
+
+                if args.len() != 1 {
+                    return Err(AnreError::SyntaxIncorrect(
+                        "Expect an expression for the argument of lookahead assertion.".to_owned(),
+                    ));
+                }
+
                 let next_expression = if let FunctionCallArg::Expression(e) = &args[0] {
                     e
                 } else {
@@ -418,10 +430,17 @@ impl<'a> Compiler<'a> {
                 };
 
                 let negative = function_call.name == FunctionName::IsNotBefore;
-                self.emit_lookahead_assertion(&function_call.expression, next_expression, negative)
+                self.emit_lookahead_assertion(expression, next_expression, negative)
             }
             FunctionName::IsAfter | FunctionName::IsNotAfter => {
                 // lookbehind assertion
+
+                if args.len() != 1 {
+                    return Err(AnreError::SyntaxIncorrect(
+                        "Expect an expression for the argument of lookbehind assertion.".to_owned(),
+                    ));
+                }
+
                 let previous_expression = if let FunctionCallArg::Expression(e) = &args[0] {
                     e
                 } else {
@@ -429,11 +448,7 @@ impl<'a> Compiler<'a> {
                 };
 
                 let negative = function_call.name == FunctionName::IsNotAfter;
-                self.emit_lookbehind_assertion(
-                    &function_call.expression,
-                    previous_expression,
-                    negative,
-                )
+                self.emit_lookbehind_assertion(expression, previous_expression, negative)
             }
 
             // Capture
@@ -442,7 +457,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn emit_empty(&mut self) -> Result<Port, Error> {
+    fn emit_empty(&mut self) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -455,7 +470,7 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_literal(&mut self, literal: &Literal) -> Result<Port, Error> {
+    fn emit_literal(&mut self, literal: &Literal) -> Result<Port, AnreError> {
         let port = match literal {
             Literal::Char(character) => self.emit_literal_char(*character)?,
             Literal::String(s) => self.emit_literal_string(s)?,
@@ -467,7 +482,7 @@ impl<'a> Compiler<'a> {
         Ok(port)
     }
 
-    fn emit_literal_char(&mut self, character: char) -> Result<Port, Error> {
+    fn emit_literal_char(&mut self, character: char) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -477,7 +492,7 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_literal_special_char(&mut self) -> Result<Port, Error> {
+    fn emit_literal_special_char(&mut self) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_out_index = line.new_node();
         let out_out_index = line.new_node();
@@ -487,7 +502,7 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_out_index, out_out_index))
     }
 
-    fn emit_literal_string(&mut self, s: &str) -> Result<Port, Error> {
+    fn emit_literal_string(&mut self, s: &str) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -497,7 +512,7 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_literal_preset_charset(&mut self, name: &PresetCharSetName) -> Result<Port, Error> {
+    fn emit_literal_preset_charset(&mut self, name: &PresetCharSetName) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -516,7 +531,7 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_literal_charset(&mut self, charset: &CharSet) -> Result<Port, Error> {
+    fn emit_literal_charset(&mut self, charset: &CharSet) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -529,7 +544,7 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_anchor_assertion(&mut self, name: &AnchorAssertionName) -> Result<Port, Error> {
+    fn emit_anchor_assertion(&mut self, name: &AnchorAssertionName) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -539,7 +554,7 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_boundary_assertion(&mut self, name: &BoundaryAssertionName) -> Result<Port, Error> {
+    fn emit_boundary_assertion(&mut self, name: &BoundaryAssertionName) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -549,16 +564,19 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_backreference(&mut self, back_reference: &BackReference) -> Result<Port, Error> {
+    fn emit_backreference(&mut self, back_reference: &BackReference) -> Result<Port, AnreError> {
         match back_reference {
             BackReference::Index(index) => self.emit_backreference_by_index(*index),
             BackReference::Name(name) => self.emit_backreference_by_name(name),
         }
     }
 
-    fn emit_backreference_by_index(&mut self, capture_group_index: usize) -> Result<Port, Error> {
+    fn emit_backreference_by_index(
+        &mut self,
+        capture_group_index: usize,
+    ) -> Result<Port, AnreError> {
         if capture_group_index >= self.route.capture_groups.len() {
-            return Err(Error::Message(format!(
+            return Err(AnreError::SyntaxIncorrect(format!(
                 "The group index ({}) of back-reference is out of range, the max index should be: {}.",
                 capture_group_index, self.route.capture_groups.len() - 1
             )));
@@ -567,12 +585,12 @@ impl<'a> Compiler<'a> {
         self.continue_emit_backreference(capture_group_index)
     }
 
-    fn emit_backreference_by_name(&mut self, name: &str) -> Result<Port, Error> {
+    fn emit_backreference_by_name(&mut self, name: &str) -> Result<Port, AnreError> {
         let capture_group_index_option = self.route.get_capture_group_index_by_name(name);
         let capture_group_index = if let Some(i) = capture_group_index_option {
             i
         } else {
-            return Err(Error::Message(format!(
+            return Err(AnreError::SyntaxIncorrect(format!(
                 "Cannot find the match with name: \"{}\".",
                 name
             )));
@@ -581,7 +599,10 @@ impl<'a> Compiler<'a> {
         self.continue_emit_backreference(capture_group_index)
     }
 
-    fn continue_emit_backreference(&mut self, capture_group_index: usize) -> Result<Port, Error> {
+    fn continue_emit_backreference(
+        &mut self,
+        capture_group_index: usize,
+    ) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -596,7 +617,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         expression: &Expression,
         args: &[FunctionCallArg],
-    ) -> Result<Port, Error> {
+    ) -> Result<Port, AnreError> {
         let name = if let FunctionCallArg::Identifier(s) = &args[0] {
             s.to_owned()
         } else {
@@ -606,7 +627,7 @@ impl<'a> Compiler<'a> {
         self.continue_emit_capture_group(expression, Some(name))
     }
 
-    fn emit_capture_group_by_index(&mut self, expression: &Expression) -> Result<Port, Error> {
+    fn emit_capture_group_by_index(&mut self, expression: &Expression) -> Result<Port, AnreError> {
         self.continue_emit_capture_group(expression, None)
     }
 
@@ -614,7 +635,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         expression: &Expression,
         name_option: Option<String>,
-    ) -> Result<Port, Error> {
+    ) -> Result<Port, AnreError> {
         let capture_group_index = self.route.new_capture_group(name_option);
         let port = self.emit_expression(expression)?;
 
@@ -644,7 +665,7 @@ impl<'a> Compiler<'a> {
         Ok(Port::new(in_node_index, out_node_index))
     }
 
-    fn emit_optional(&mut self, expression: &Expression, is_lazy: bool) -> Result<Port, Error> {
+    fn emit_optional(&mut self, expression: &Expression, is_lazy: bool) -> Result<Port, AnreError> {
         // greedy optional
         //
         //                    box
@@ -668,7 +689,7 @@ impl<'a> Compiler<'a> {
         self.continue_emit_optional(port, is_lazy)
     }
 
-    fn continue_emit_optional(&mut self, port: Port, is_lazy: bool) -> Result<Port, Error> {
+    fn continue_emit_optional(&mut self, port: Port, is_lazy: bool) -> Result<Port, AnreError> {
         let line = self.get_current_line_ref_mut();
         let in_node_index = line.new_node();
         let out_node_index = line.new_node();
@@ -708,7 +729,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         expression: &Expression,
         times: usize,
-    ) -> Result<Port, Error> {
+    ) -> Result<Port, AnreError> {
         assert!(times > 1);
         self.continue_emit_repetition(expression, RepetitionType::Specified(times), true)
     }
@@ -719,7 +740,7 @@ impl<'a> Compiler<'a> {
         from: usize,
         to: usize,
         is_lazy: bool,
-    ) -> Result<Port, Error> {
+    ) -> Result<Port, AnreError> {
         assert!(from > 0 && to > 1 && to > from);
         self.continue_emit_repetition(expression, RepetitionType::Range(from, to), is_lazy)
     }
@@ -729,7 +750,7 @@ impl<'a> Compiler<'a> {
         expression: &Expression,
         repetition_type: RepetitionType,
         is_lazy: bool,
-    ) -> Result<Port, Error> {
+    ) -> Result<Port, AnreError> {
         // lazy repetition
         //
         //                     counter               counter
@@ -833,7 +854,7 @@ impl<'a> Compiler<'a> {
         current_expression: &Expression,
         next_expression: &Expression,
         negative: bool,
-    ) -> Result<Port, Error> {
+    ) -> Result<Port, AnreError> {
         // * is_before(A, B), A.is_before(B), A(?=B)
         // * is_not_before(A, B), A.is_not_before(B), A(?!B)
 
@@ -892,7 +913,7 @@ impl<'a> Compiler<'a> {
         current_expression: &Expression,
         previous_expression: &Expression,
         negative: bool,
-    ) -> Result<Port, Error> {
+    ) -> Result<Port, AnreError> {
         // * is_after(A, B), A.is_after(B), (?<=B)A
         // * is_not_after(A, B, A.is_not_after(B), (?<!B)A
 
@@ -915,7 +936,7 @@ impl<'a> Compiler<'a> {
             let length = if let MatchLength::Fixed(val) = enum_length {
                 val
             } else {
-                return Err(Error::Message("Look behind assertion (is_after, is_not_after) requires a fixed length pattern.".to_owned()));
+                return Err(AnreError::SyntaxIncorrect("Look behind assertion (is_after, is_not_after) requires a fixed length pattern.".to_owned()));
             };
 
             let sub_port = self.emit_expression(previous_expression)?;
@@ -974,7 +995,7 @@ impl Port {
 fn append_preset_charset_positive_only(
     name: &PresetCharSetName,
     items: &mut Vec<CharSetItem>,
-) -> Result<(), Error> {
+) -> Result<(), AnreError> {
     match name {
         PresetCharSetName::CharWord => {
             add_preset_word(items);
@@ -986,7 +1007,7 @@ fn append_preset_charset_positive_only(
             add_preset_digit(items);
         }
         _ => {
-            return Err(Error::Message(format!(
+            return Err(AnreError::SyntaxIncorrect(format!(
                 "Can not append negative preset charset \"{}\" into charset.",
                 name
             )));
@@ -996,7 +1017,7 @@ fn append_preset_charset_positive_only(
     Ok(())
 }
 
-fn append_charset(charset: &CharSet, items: &mut Vec<CharSetItem>) -> Result<(), Error> {
+fn append_charset(charset: &CharSet, items: &mut Vec<CharSetItem>) -> Result<(), AnreError> {
     for element in &charset.elements {
         match element {
             CharSetElement::Char(c) => add_char(items, *c),
@@ -1022,8 +1043,8 @@ mod tests {
     use pretty_assertions::assert_str_eq;
 
     use crate::{
-        error::Error,
         route::{Route, MAIN_LINE_INDEX},
+        AnreError,
     };
 
     use super::{compile_from_anre, compile_from_regex};
@@ -1538,7 +1559,7 @@ define(letter, ['a'..'f', char_space])
         {
             assert!(matches!(
                 compile_from_anre(r#"[char_not_word]"#),
-                Err(Error::Message(_))
+                Err(AnreError::SyntaxIncorrect(_))
             ));
         }
 
@@ -1547,7 +1568,7 @@ define(letter, ['a'..'f', char_space])
         {
             assert!(matches!(
                 compile_from_anre(r#"['+', !['a'..'f']]"#),
-                Err(Error::MessageWithLocation(_, _))
+                Err(AnreError::MessageWithLocation(_, _))
             ));
         }
     }
@@ -1614,7 +1635,7 @@ define(letter, ['a'..'f', char_space])
         {
             assert!(matches!(
                 compile_from_anre(r#"'a', start, 'b'"#),
-                Err(Error::Message(_))
+                Err(AnreError::SyntaxIncorrect(_))
             ));
         }
 
@@ -1622,7 +1643,7 @@ define(letter, ['a'..'f', char_space])
         {
             assert!(matches!(
                 compile_from_anre(r#"'a', end, 'b'"#),
-                Err(Error::Message(_))
+                Err(AnreError::SyntaxIncorrect(_))
             ));
         }
     }
@@ -2503,6 +2524,14 @@ define(letter, ['a'..'f', char_space])
 # {0}"
             );
         }
+
+        // syntax error
+        {
+            assert!(matches!(
+                compile_from_anre(r#"'a'.is_before()"#),
+                Err(AnreError::SyntaxIncorrect(_))
+            ));
+        }
     }
 
     #[test]
@@ -2567,16 +2596,24 @@ define(letter, ['a'..'f', char_space])
             );
         }
 
+        // syntax error
+        {
+            assert!(matches!(
+                compile_from_anre(r#"'a'.is_after()"#),
+                Err(AnreError::SyntaxIncorrect(_))
+            ));
+        }
+
         // variable length
         {
             assert!(matches!(
                 compile_from_anre(r#"'a'.is_after("x" || "yz")"#),
-                Err(Error::Message(_))
+                Err(AnreError::SyntaxIncorrect(_))
             ));
 
             assert!(matches!(
                 compile_from_anre(r#"'a'.is_after("x"+)"#),
-                Err(Error::Message(_))
+                Err(AnreError::SyntaxIncorrect(_))
             ));
         }
     }
