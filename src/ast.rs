@@ -1,8 +1,8 @@
-// Copyright (c) 2024 Hemashushu <hippospark@gmail.com>, All rights reserved.
+// Copyright (c) 2025 Hemashushu <hippospark@gmail.com>, All rights reserved.
 //
 // This Source Code Form is subject to the terms of
-// the Mozilla Public License version 2.0 and additional exceptions,
-// more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
 use std::fmt::Display;
 
@@ -18,41 +18,45 @@ pub enum Expression {
     AnchorAssertion(AnchorAssertionName),
 
     /**
-     * `('a','c'.is_after('b'))` always fails because it is
-     * NOT possible to be both 'a' and 'b' before 'c'.
-     * in the same way,
-     * `('c'.is_before('a'), 'b')` always fails because it is
-     * impossible to be both 'a' and 'b' after 'c'.
-     * */
+     * A boundary assertion checks the relative position of characters.
+     * For example:
+     * - `('a', 'c'.is_after('b'))` always fails because it is
+     *   impossible for 'a' and 'b' to both precede 'c'.
+     * - Similarly, `('c'.is_before('a'), 'b')` always fails because it is
+     *   impossible for 'a' and 'b' to both follow 'c'.
+     */
     BoundaryAssertion(BoundaryAssertionName),
 
     /**
-     * the "group" of ANRE is different from the "group" of
-     * ordinary regular expressions.
-     * the "group" of ANRE is just a series of parenthesized patterns
-     * that are not captured unless called by the 'name' or 'index' function.
-     * in terms of results, the "group" of ANRE is equivalent to the
-     * "non-capturing group" of ordinary regular expressions.
-     * e.g.
-     * ANRE `('a', 'b', char_word+)` is equivalent to oridinary regex `ab\w+`
-     * the "group" of ANRE is used to group patterns and
-     * change operator precedence and associativity
-     * */
+     * The "group" in ANRE differs from the "group" in traditional regular expressions.
+     * In ANRE, a "group" is a series of parenthesized patterns that are not captured
+     * unless explicitly referenced by the `name` or `index` function.
+     * In terms of results, an ANRE "group" is equivalent to a "non-capturing group"
+     * in traditional regular expressions.
+     *
+     * Example:
+     *
+     * ANRE: `('a', 'b', char_word+)`
+     * Equivalent regex: `ab\w+`
+     *
+     * Groups in ANRE are used to group patterns and modify operator precedence
+     * and associativity.
+     */
     Group(Vec<Expression>),
 
     FunctionCall(Box<FunctionCall>),
 
     /**
-     * Disjunction
-     * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Disjunction
-     * */
+     * Represents a disjunction (logical OR) between two expressions.
+     * For example, `a|b` matches either 'a' or 'b'.
+     * Reference: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Disjunction
+     */
     Or(Box<Expression>, Box<Expression>),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionCall {
     pub name: FunctionName,
-    // pub expression: Box<Expression>, // the index 0 arg
     pub args: Vec<FunctionCallArg>,
 }
 
@@ -82,8 +86,8 @@ pub struct CharSet {
 pub enum CharSetElement {
     Char(char),
     CharRange(CharRange),
-    PresetCharSet(PresetCharSetName), // only positive preset charsets are allowed
-    CharSet(Box<CharSet>),            // only positive custom charsets are allowed
+    PresetCharSet(PresetCharSetName), // Only positive preset charsets are allowed.
+    CharSet(Box<CharSet>),            // Only positive custom charsets are allowed.
 }
 
 #[derive(Debug, PartialEq)]
@@ -164,7 +168,7 @@ impl Display for PresetCharSetName {
     }
 }
 
-// 'special char' currently contains only the 'char_any'.
+// 'SpecialCharName' currently contains only the 'char_any' variant.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum SpecialCharName {
     CharAny,
@@ -195,7 +199,7 @@ pub enum FunctionName {
     RepeatRangeLazy,
     AtLeastLazy,
 
-    // Assertions ("判定")
+    // Assertions (i.e. "判定")
     IsBefore,    // lookahead
     IsAfter,     // lookbehind
     IsNotBefore, // negative lookahead

@@ -1,8 +1,8 @@
-// Copyright (c) 2024 Hemashushu <hippospark@gmail.com>, All rights reserved.
+// Copyright (c) 2025 Hemashushu <hippospark@gmail.com>, All rights reserved.
 //
 // This Source Code Form is subject to the terms of
-// the Mozilla Public License version 2.0 and additional exceptions,
-// more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
 use crate::{
     ast::{
@@ -10,7 +10,7 @@ use crate::{
         CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
         PresetCharSetName, Program,
     },
-    route::{Line, Route},
+    object_file::{ObjectFile, Route},
     rulechecker::{get_match_length, MatchLength},
     transition::{
         add_char, add_preset_digit, add_preset_space, add_preset_word, add_range,
@@ -24,18 +24,21 @@ use crate::{
     AnreError,
 };
 
-pub fn compile_from_regex(s: &str) -> Result<Route, AnreError> {
-    let program = crate::tradition::parse_from_str(s)?;
+/// Compile from traditional regular expression.
+pub fn compile_from_regex(s: &str) -> Result<ObjectFile, AnreError> {
+    let program = crate::traditional::parse_from_str(s)?;
     compile(&program)
 }
 
-pub fn compile_from_anre(s: &str) -> Result<Route, AnreError> {
+/// Compile from ANRE regular expression.
+pub fn compile_from_anre(s: &str) -> Result<ObjectFile, AnreError> {
     let program = crate::anre::parse_from_str(s)?;
     compile(&program)
 }
 
-pub fn compile(program: &Program) -> Result<Route, AnreError> {
-    let mut route = Route::new();
+/// Compile from AST `Program`.
+pub fn compile(program: &Program) -> Result<ObjectFile, AnreError> {
+    let mut route = ObjectFile::new();
     let mut compiler = Compiler::new(program, &mut route);
     compiler.compile()?;
 
@@ -43,45 +46,61 @@ pub fn compile(program: &Program) -> Result<Route, AnreError> {
 }
 
 pub struct Compiler<'a> {
-    // AST
+    // The AST
     program: &'a Program,
 
-    // the compilation target
-    route: &'a mut Route,
+    // The compilation target
+    object_file: &'a mut ObjectFile,
 
-    // index of the current line
-    current_line_index: usize,
+    // Index of the current route
+    current_route_index: usize,
 }
 
 impl<'a> Compiler<'a> {
-    fn new(program: &'a Program, route: &'a mut Route) -> Self {
-        let current_line_index = route.new_line();
+    fn new(program: &'a Program, object_file: &'a mut ObjectFile) -> Self {
+        let current_route_index = object_file.create_route();
         Compiler {
             program,
-            route,
-            current_line_index,
+            object_file,
+            current_route_index,
         }
     }
 
-    fn get_current_line_ref_mut(&mut self) -> &mut Line {
-        &mut self.route.lines[self.current_line_index]
+    // Get a mutable reference to the current route in the object file.
+    fn get_current_route_ref_mut(&mut self) -> &mut Route {
+        &mut self.object_file.routes[self.current_route_index]
     }
 
+    // Start the compilation process by emitting the main program.
     fn compile(&mut self) -> Result<(), AnreError> {
         self.emit_program(self.program)
     }
 
+    // Compile the main route of the program.
     fn emit_program(&mut self, program: &Program) -> Result<(), AnreError> {
-        // the `Program` node is actually a `Group` which omits the parentheses,
-        // in addition, there may be the 'start' and 'end' assertions.
+        // Compile each sub-expression of the main route.
+        //
+        // The `Program` node is essentially a `Group` without explicit parentheses.
+        // For example, "'a', 'b'+, 'c'" is equivalent to "('a', 'b'+, 'c')".
+        //
+        // Additionally, the program may include "start" and "end" assertions.
+        //
+        //                   Main Route
+        //                   ----------
+        //      Component     Component     Component
+        // in   /-----\  jump /------\ jump  /-----\    out
+        // o----| 'a' |-------| 'b'+ |-------| 'c' |----o
+        // |    \-----/       \------/       \-----/    |
+        // |                                            |
+        // \----------------Program Component-----------/
 
-        // create the first (index 0) capture group to represent the program itself
-        let capture_group_index = self.route.new_capture_group(None);
+        // Create the first (index 0) capture group to represent the program itself.
+        let capture_group_index = self.object_file.create_capture_group(None);
 
         let expressions = &program.expressions;
 
-        let mut fixed_start_position = false;
-        let mut ports = vec![];
+        let mut is_fixed_start_position = false;
+        let mut components = vec![];
 
         for (expression_index, expression) in expressions.iter().enumerate() {
             if matches!(
@@ -95,8 +114,8 @@ impl<'a> Compiler<'a> {
                     ));
                 }
 
-                fixed_start_position = true;
-                ports.push(self.emit_anchor_assertion(&AnchorAssertionName::Start)?);
+                is_fixed_start_position = true;
+                components.push(self.emit_anchor_assertion(&AnchorAssertionName::Start)?);
             } else if matches!(
                 expression,
                 Expression::AnchorAssertion(AnchorAssertionName::End)
@@ -108,71 +127,85 @@ impl<'a> Compiler<'a> {
                     ));
                 }
 
-                ports.push(self.emit_anchor_assertion(&AnchorAssertionName::End)?);
+                components.push(self.emit_anchor_assertion(&AnchorAssertionName::End)?);
             } else {
-                ports.push(self.emit_expression(expression)?);
+                components.push(self.emit_expression(expression)?);
             }
         }
 
-        let program_port = if ports.is_empty() {
+        let program_component = if components.is_empty() {
             // empty expression
             self.emit_empty()?
-        } else if ports.len() == 1 {
+        } else if components.len() == 1 {
             // single expression
-            ports.pop().unwrap()
+            components.pop().unwrap()
         } else {
             // multiple expression
-            let line = self.get_current_line_ref_mut();
-            for idx in 0..(ports.len() - 1) {
-                let previous_out_node_index = ports[idx].out_node_index;
-                let next_in_node_index = ports[idx + 1].in_node_index;
+            let route = self.get_current_route_ref_mut();
+            for idx in 0..(components.len() - 1) {
+                let previous_out_node_index = components[idx].out_node_index;
+                let next_in_node_index = components[idx + 1].in_node_index;
                 let transition = Transition::Jump(JumpTransition);
-                line.append_transition(previous_out_node_index, next_in_node_index, transition);
+                route.create_transition_item(
+                    previous_out_node_index,
+                    next_in_node_index,
+                    transition,
+                );
             }
 
-            Port::new(
-                ports.first().unwrap().in_node_index,
-                ports.last().unwrap().out_node_index,
+            Component::new(
+                components.first().unwrap().in_node_index,
+                components.last().unwrap().out_node_index,
             )
         };
 
-        //   capture start     box       capture end
+        // Add transitions for capturing the start and end of the program component.
+        // This capture group is the default group with index 0.
+        //
+        // The structure of the program component with capture transitions:
+        //
+        //
+        //                    program
+        //   capture start   component      capture end
         //        trans    /-----------\    trans
         //  ==o==---------==o in  out o==--------==o==
-        //   in            \-----------/           out
-
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+        // in |            \-----------/           | out
+        //    |                                    |
+        //    \-------------- route ---------------/
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
 
         let capture_start_transition = CaptureStartTransition::new(capture_group_index);
         let capture_end_transition = CaptureEndTransition::new(capture_group_index);
 
-        line.append_transition(
+        route.create_transition_item(
             in_node_index,
-            program_port.in_node_index,
+            program_component.in_node_index,
             Transition::CaptureStart(capture_start_transition),
         );
 
-        line.append_transition(
-            program_port.out_node_index,
+        route.create_transition_item(
+            program_component.out_node_index,
             out_node_index,
             Transition::CaptureEnd(capture_end_transition),
         );
 
         // update the program ports and properties
-        line.start_node_index = in_node_index;
-        line.end_node_index = out_node_index;
-        line.fixed_start_position = fixed_start_position;
+        route.start_node_index = in_node_index;
+        route.end_node_index = out_node_index;
+        route.is_fixed_start_position = is_fixed_start_position;
 
         Ok(())
     }
 
-    fn emit_expression(&mut self, expression: &Expression) -> Result<Port, AnreError> {
+    /// Compile an expression to a component
+    fn emit_expression(&mut self, expression: &Expression) -> Result<Component, AnreError> {
         let result = match expression {
             Expression::Literal(literal) => self.emit_literal(literal)?,
             Expression::BackReference(back_reference) => self.emit_backreference(back_reference)?,
             Expression::AnchorAssertion(name) => {
+                // syntax error
                 match name {
                     AnchorAssertionName::Start => {
                         return Err(AnreError::SyntaxIncorrect(
@@ -195,106 +228,128 @@ impl<'a> Compiler<'a> {
         Ok(result)
     }
 
-    fn emit_group(&mut self, expressions: &[Expression]) -> Result<Port, AnreError> {
-        /*
-         * the "group" of ANRE is different from the "group" of
-         * ordinary regular expressions.
-         * the "group" of ANRE is just a series of parenthesized patterns
-         * that are not captured unless called by the 'name' or 'index' function.
-         * in terms of results, the "group" of ANRE is equivalent to the
-         * "non-capturing group" of ordinary regular expressions.
-         * e.g.
-         * ANRE `('a', 'b', char_word+)` is equivalent to oridinary regex `ab\w+`
-         * the "group" of ANRE is used to group patterns and
-         * change operator precedence and associativity
-         */
-
-        // connecting two or more boxies by 'jump transition'
+    fn emit_group(&mut self, expressions: &[Expression]) -> Result<Component, AnreError> {
+        // Compile each expression into a component and connect adjacent components
+        // using "jump transitions".
         //
-        //     prev         jump        next
-        //  /-----------\   trans    /-----------\
-        // ==o in  out o==----------==o in  out o==
-        //  \-----------/            \-----------/
+        // Diagram illustrating the connection between components:
+        //
+        // ```diagram
+        //     prev component  jump      next component
+        //     /-----------\   trans    /-----------\
+        // ====o in  out o==----------==o in  out o======
+        //  |  \-----------/            \-----------/  |
+        //  |                                          |
+        //  \--------------- component ----------------/
+        // ```
+        //
+        // The "group" in ANRE differs from the "group" in traditional regular expressions.
+        // In ANRE, a "group" is a series of parenthesized patterns that are not captured
+        // unless explicitly referenced by the 'name' or 'index' function.
+        //
+        // In terms of functionality, the "group" in ANRE is equivalent to the "non-capturing group"
+        // in traditional regular expressions.
+        //
+        // Example:
+        //
+        // ANRE: `('a', 'b', char_word+)`
+        // Equivalent Regex: `ab\w+`
+        //
+        // The "group" in ANRE is used to group patterns and modify operator precedence and associativity.
+        //
+        // Note: Do NOT add "capture transitions" around the group in ANRE.
 
-        let mut ports = vec![];
+        let mut components = vec![];
         for expression in expressions {
-            ports.push(self.emit_expression(expression)?);
+            components.push(self.emit_expression(expression)?);
         }
 
-        let port = if ports.is_empty() {
+        let compontent = if components.is_empty() {
             // empty expression
             self.emit_empty()?
-        } else if ports.len() == 1 {
+        } else if components.len() == 1 {
             // single expression.
             // maybe a group also, so return the underlay port directly
             // to eliminates the nested group, e.g. '(((...)))'.
-            ports.pop().unwrap()
+            components.pop().unwrap()
         } else {
             // multiple expressions
-            let line = self.get_current_line_ref_mut();
-            for idx in 0..(ports.len() - 1) {
-                let current_out_state_index = ports[idx].out_node_index;
-                let next_in_state_index = ports[idx + 1].in_node_index;
+            let route = self.get_current_route_ref_mut();
+            for idx in 0..(components.len() - 1) {
+                let current_out_state_index = components[idx].out_node_index;
+                let next_in_state_index = components[idx + 1].in_node_index;
                 let transition = Transition::Jump(JumpTransition);
-                line.append_transition(current_out_state_index, next_in_state_index, transition);
+                route.create_transition_item(
+                    current_out_state_index,
+                    next_in_state_index,
+                    transition,
+                );
             }
 
-            Port::new(
-                ports.first().unwrap().in_node_index,
-                ports.last().unwrap().out_node_index,
+            Component::new(
+                components.first().unwrap().in_node_index,
+                components.last().unwrap().out_node_index,
             )
         };
 
-        Ok(port)
+        Ok(compontent)
     }
 
-    fn emit_logic_or(&mut self, left: &Expression, right: &Expression) -> Result<Port, AnreError> {
+    fn emit_logic_or(
+        &mut self,
+        left: &Expression,
+        right: &Expression,
+    ) -> Result<Component, AnreError> {
+        // ```diagram
         //                    left
         //         jump   /-----------\   jump
         //      /--------==o in  out o==--------\
         //  in  |         \-----------/         |  out
         // ==o--|                               |--o==
-        //      |             right             |
-        //      |         /-----------\         |
-        //      \--------==o in  out o==--------/
-        //         jump   \-----------/   jump
+        //   |  |             right             |  |
+        //   |  |         /-----------\         |  |
+        //   |  \--------==o in  out o==--------/  |
+        //   |      jump   \-----------/   jump    |
+        //   |                                     |
+        //   \-------------- component ------------/
+        // ```
 
         let left_port = self.emit_expression(left)?;
         let right_port = self.emit_expression(right)?;
 
-        let line = self.get_current_line_ref_mut();
+        let route = self.get_current_route_ref_mut();
 
-        let in_state_index = line.new_node();
-        let out_state_index = line.new_node();
+        let in_state_index = route.create_node();
+        let out_state_index = route.create_node();
 
-        line.append_transition(
+        route.create_transition_item(
             in_state_index,
             left_port.in_node_index,
             Transition::Jump(JumpTransition),
         );
 
-        line.append_transition(
+        route.create_transition_item(
             in_state_index,
             right_port.in_node_index,
             Transition::Jump(JumpTransition),
         );
 
-        line.append_transition(
+        route.create_transition_item(
             left_port.out_node_index,
             out_state_index,
             Transition::Jump(JumpTransition),
         );
 
-        line.append_transition(
+        route.create_transition_item(
             right_port.out_node_index,
             out_state_index,
             Transition::Jump(JumpTransition),
         );
 
-        Ok(Port::new(in_state_index, out_state_index))
+        Ok(Component::new(in_state_index, out_state_index))
     }
 
-    fn emit_function_call(&mut self, function_call: &FunctionCall) -> Result<Port, AnreError> {
+    fn emit_function_call(&mut self, function_call: &FunctionCall) -> Result<Component, AnreError> {
         let expression = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
             e
         } else {
@@ -323,8 +378,8 @@ impl<'a> Compiler<'a> {
             }
             FunctionName::ZeroOrMore | FunctionName::ZeroOrMoreLazy => {
                 // {0,MAX} == optional + one_or_more
-                let port = self.emit_repeat_range(expression, 1, usize::MAX, is_lazy)?;
-                self.continue_emit_optional(port, is_lazy)
+                let component = self.emit_repeat_range(expression, 1, usize::MAX, is_lazy)?;
+                self.continue_emit_optional(component, is_lazy)
             }
             FunctionName::Repeat => {
                 let times = if let FunctionCallArg::Number(n) = &args[0] {
@@ -378,8 +433,8 @@ impl<'a> Compiler<'a> {
                     } else {
                         // {0,m}
                         // optional + range
-                        let port = self.emit_repeat_range(expression, 1, to, is_lazy)?;
-                        self.continue_emit_optional(port, is_lazy)
+                        let component = self.emit_repeat_range(expression, 1, to, is_lazy)?;
+                        self.continue_emit_optional(component, is_lazy)
                     }
                 } else if to == 1 {
                     // {1,1}
@@ -404,8 +459,8 @@ impl<'a> Compiler<'a> {
 
                 if from == 0 {
                     // {0,MAX} == optional + one_or_more
-                    let port = self.emit_repeat_range(expression, 1, usize::MAX, is_lazy)?;
-                    self.continue_emit_optional(port, is_lazy)
+                    let component = self.emit_repeat_range(expression, 1, usize::MAX, is_lazy)?;
+                    self.continue_emit_optional(component, is_lazy)
                 } else {
                     // {m,MAX}
                     // repeat range
@@ -457,21 +512,22 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn emit_empty(&mut self) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    /// Short-cut component.
+    fn emit_empty(&mut self) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
 
-        line.append_transition(
+        route.create_transition_item(
             in_node_index,
             out_node_index,
             Transition::Jump(JumpTransition),
         );
-        Ok(Port::new(in_node_index, out_node_index))
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
-    fn emit_literal(&mut self, literal: &Literal) -> Result<Port, AnreError> {
-        let port = match literal {
+    fn emit_literal(&mut self, literal: &Literal) -> Result<Component, AnreError> {
+        let component = match literal {
             Literal::Char(character) => self.emit_literal_char(*character)?,
             Literal::String(s) => self.emit_literal_string(s)?,
             Literal::CharSet(charset) => self.emit_literal_charset(charset)?,
@@ -479,43 +535,46 @@ impl<'a> Compiler<'a> {
             Literal::Special(_) => self.emit_literal_special_char()?,
         };
 
-        Ok(port)
+        Ok(component)
     }
 
-    fn emit_literal_char(&mut self, character: char) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    fn emit_literal_char(&mut self, character: char) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
         let transition = Transition::Char(CharTransition::new(character));
 
-        line.append_transition(in_node_index, out_node_index, transition);
-        Ok(Port::new(in_node_index, out_node_index))
+        route.create_transition_item(in_node_index, out_node_index, transition);
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
-    fn emit_literal_special_char(&mut self) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_out_index = line.new_node();
-        let out_out_index = line.new_node();
+    fn emit_literal_special_char(&mut self) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_out_index = route.create_node();
+        let out_out_index = route.create_node();
         let transition = Transition::SpecialChar(SpecialCharTransition);
 
-        line.append_transition(in_out_index, out_out_index, transition);
-        Ok(Port::new(in_out_index, out_out_index))
+        route.create_transition_item(in_out_index, out_out_index, transition);
+        Ok(Component::new(in_out_index, out_out_index))
     }
 
-    fn emit_literal_string(&mut self, s: &str) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    fn emit_literal_string(&mut self, s: &str) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
         let transition = Transition::String(StringTransition::new(s));
 
-        line.append_transition(in_node_index, out_node_index, transition);
-        Ok(Port::new(in_node_index, out_node_index))
+        route.create_transition_item(in_node_index, out_node_index, transition);
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
-    fn emit_literal_preset_charset(&mut self, name: &PresetCharSetName) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    fn emit_literal_preset_charset(
+        &mut self,
+        name: &PresetCharSetName,
+    ) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
 
         let charset_transition = match name {
             PresetCharSetName::CharWord => CharSetTransition::new_preset_word(),
@@ -527,44 +586,53 @@ impl<'a> Compiler<'a> {
         };
 
         let transition = Transition::CharSet(charset_transition);
-        line.append_transition(in_node_index, out_node_index, transition);
-        Ok(Port::new(in_node_index, out_node_index))
+        route.create_transition_item(in_node_index, out_node_index, transition);
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
-    fn emit_literal_charset(&mut self, charset: &CharSet) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    fn emit_literal_charset(&mut self, charset: &CharSet) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
 
         let mut items: Vec<CharSetItem> = vec![];
         append_charset(charset, &mut items)?;
 
         let transition = Transition::CharSet(CharSetTransition::new(items, charset.negative));
-        line.append_transition(in_node_index, out_node_index, transition);
-        Ok(Port::new(in_node_index, out_node_index))
+        route.create_transition_item(in_node_index, out_node_index, transition);
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
-    fn emit_anchor_assertion(&mut self, name: &AnchorAssertionName) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    fn emit_anchor_assertion(
+        &mut self,
+        name: &AnchorAssertionName,
+    ) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
         let transition = Transition::AnchorAssertion(AnchorAssertionTransition::new(*name));
 
-        line.append_transition(in_node_index, out_node_index, transition);
-        Ok(Port::new(in_node_index, out_node_index))
+        route.create_transition_item(in_node_index, out_node_index, transition);
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
-    fn emit_boundary_assertion(&mut self, name: &BoundaryAssertionName) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    fn emit_boundary_assertion(
+        &mut self,
+        name: &BoundaryAssertionName,
+    ) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
         let transition = Transition::BoundaryAssertion(BoundaryAssertionTransition::new(*name));
 
-        line.append_transition(in_node_index, out_node_index, transition);
-        Ok(Port::new(in_node_index, out_node_index))
+        route.create_transition_item(in_node_index, out_node_index, transition);
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
-    fn emit_backreference(&mut self, back_reference: &BackReference) -> Result<Port, AnreError> {
+    fn emit_backreference(
+        &mut self,
+        back_reference: &BackReference,
+    ) -> Result<Component, AnreError> {
         match back_reference {
             BackReference::Index(index) => self.emit_backreference_by_index(*index),
             BackReference::Name(name) => self.emit_backreference_by_name(name),
@@ -574,19 +642,19 @@ impl<'a> Compiler<'a> {
     fn emit_backreference_by_index(
         &mut self,
         capture_group_index: usize,
-    ) -> Result<Port, AnreError> {
-        if capture_group_index >= self.route.capture_groups.len() {
+    ) -> Result<Component, AnreError> {
+        if capture_group_index >= self.object_file.capture_group_names.len() {
             return Err(AnreError::SyntaxIncorrect(format!(
                 "The group index ({}) of back-reference is out of range, the max index should be: {}.",
-                capture_group_index, self.route.capture_groups.len() - 1
+                capture_group_index, self.object_file.capture_group_names.len() - 1
             )));
         }
 
         self.continue_emit_backreference(capture_group_index)
     }
 
-    fn emit_backreference_by_name(&mut self, name: &str) -> Result<Port, AnreError> {
-        let capture_group_index_option = self.route.get_capture_group_index_by_name(name);
+    fn emit_backreference_by_name(&mut self, name: &str) -> Result<Component, AnreError> {
+        let capture_group_index_option = self.object_file.get_capture_group_index_by_name(name);
         let capture_group_index = if let Some(i) = capture_group_index_option {
             i
         } else {
@@ -602,22 +670,22 @@ impl<'a> Compiler<'a> {
     fn continue_emit_backreference(
         &mut self,
         capture_group_index: usize,
-    ) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    ) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
         let transition =
             Transition::BackReference(BackReferenceTransition::new(capture_group_index));
 
-        line.append_transition(in_node_index, out_node_index, transition);
-        Ok(Port::new(in_node_index, out_node_index))
+        route.create_transition_item(in_node_index, out_node_index, transition);
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
     fn emit_capture_group_by_name(
         &mut self,
         expression: &Expression,
         args: &[FunctionCallArg],
-    ) -> Result<Port, AnreError> {
+    ) -> Result<Component, AnreError> {
         let name = if let FunctionCallArg::Identifier(s) = &args[0] {
             s.to_owned()
         } else {
@@ -627,7 +695,10 @@ impl<'a> Compiler<'a> {
         self.continue_emit_capture_group(expression, Some(name))
     }
 
-    fn emit_capture_group_by_index(&mut self, expression: &Expression) -> Result<Port, AnreError> {
+    fn emit_capture_group_by_index(
+        &mut self,
+        expression: &Expression,
+    ) -> Result<Component, AnreError> {
         self.continue_emit_capture_group(expression, None)
     }
 
@@ -635,101 +706,115 @@ impl<'a> Compiler<'a> {
         &mut self,
         expression: &Expression,
         name_option: Option<String>,
-    ) -> Result<Port, AnreError> {
-        let capture_group_index = self.route.new_capture_group(name_option);
-        let port = self.emit_expression(expression)?;
+    ) -> Result<Component, AnreError> {
+        let capture_group_index = self.object_file.create_capture_group(name_option);
+        let component = self.emit_expression(expression)?;
 
-        //   capture start      box      capture end
+        //   capture start   component    capture end
         //        trans    /-----------\    trans
         //  ==o==---------==o in  out o==--------==o==
-        //   in            \-----------/           out
+        // in |            \-----------/           | out
+        //    |                                    |
+        //    \-------------- component -----------/
 
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
         let capture_start_transition = CaptureStartTransition::new(capture_group_index);
         let capture_end_transition = CaptureEndTransition::new(capture_group_index);
 
-        line.append_transition(
+        route.create_transition_item(
             in_node_index,
-            port.in_node_index,
+            component.in_node_index,
             Transition::CaptureStart(capture_start_transition),
         );
 
-        line.append_transition(
-            port.out_node_index,
+        route.create_transition_item(
+            component.out_node_index,
             out_node_index,
             Transition::CaptureEnd(capture_end_transition),
         );
 
-        Ok(Port::new(in_node_index, out_node_index))
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
-    fn emit_optional(&mut self, expression: &Expression, is_lazy: bool) -> Result<Port, AnreError> {
-        // greedy optional
+    fn emit_optional(
+        &mut self,
+        expression: &Expression,
+        is_lazy: bool,
+    ) -> Result<Component, AnreError> {
+        // Append nodes and jump transitions around the component to
+        // implement the "optional" function.
         //
-        //                    box
+        // for greedy optional:
+        //
+        //                 component
         //   in     jmp  /-----------\  jmp
         //  ==o|o==-----==o in  out o==---==o==
         //     |o==\     \-----------/      ^ out
         //         |                        |
         //         \------------------------/
-        //                  jump trans
-
-        // lazy optional
-        //                  jump trans
+        //                jump trans
+        //
+        // for lazy optional:
+        //
+        //                jump trans
         //         /------------------------\
         //         |                        |
         //     |o==/     /-----------\      v out
         //  ==o|o==-----==o in  out o==---==o==
         //   in     jmp  \-----------/  jmp
-        //                    box
+        //                 component
 
-        let port = self.emit_expression(expression)?;
-        self.continue_emit_optional(port, is_lazy)
+        let component = self.emit_expression(expression)?;
+        self.continue_emit_optional(component, is_lazy)
     }
 
-    fn continue_emit_optional(&mut self, port: Port, is_lazy: bool) -> Result<Port, AnreError> {
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+    fn continue_emit_optional(
+        &mut self,
+        port: Component,
+        is_lazy: bool,
+    ) -> Result<Component, AnreError> {
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
 
         if is_lazy {
-            line.append_transition(
+            route.create_transition_item(
                 in_node_index,
                 out_node_index,
                 Transition::Jump(JumpTransition),
             );
         }
 
-        line.append_transition(
+        route.create_transition_item(
             in_node_index,
             port.in_node_index,
             Transition::Jump(JumpTransition),
         );
 
-        line.append_transition(
+        route.create_transition_item(
             port.out_node_index,
             out_node_index,
             Transition::Jump(JumpTransition),
         );
 
         if !is_lazy {
-            line.append_transition(
+            route.create_transition_item(
                 in_node_index,
                 out_node_index,
                 Transition::Jump(JumpTransition),
             );
         }
 
-        Ok(Port::new(in_node_index, out_node_index))
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
     fn emit_repeat_specified(
         &mut self,
         expression: &Expression,
         times: usize,
-    ) -> Result<Port, AnreError> {
+    ) -> Result<Component, AnreError> {
         assert!(times > 1);
         self.continue_emit_repetition(expression, RepetitionType::Specified(times), true)
     }
@@ -740,7 +825,7 @@ impl<'a> Compiler<'a> {
         from: usize,
         to: usize,
         is_lazy: bool,
-    ) -> Result<Port, AnreError> {
+    ) -> Result<Component, AnreError> {
         assert!(from > 0 && to > 1 && to > from);
         self.continue_emit_repetition(expression, RepetitionType::Range(from, to), is_lazy)
     }
@@ -750,8 +835,11 @@ impl<'a> Compiler<'a> {
         expression: &Expression,
         repetition_type: RepetitionType,
         is_lazy: bool,
-    ) -> Result<Port, AnreError> {
-        // lazy repetition
+    ) -> Result<Component, AnreError> {
+        // Append nodes and transitions around the component to
+        // implement the "repetition" function.
+        //
+        // for lazy repetition:
         //
         //                     counter               counter
         //                   | save                | restore & inc
@@ -763,51 +851,50 @@ impl<'a> Compiler<'a> {
         //         trans \--------------------------------------/    trans
         //                         repetition trans
         //
-        // greedy repetion
+        // for greedy repetion:
         //
-        //                         repetition trans
-        //               /--------------------------------------\
-        //               |     counter               counter    |
-        //               |   | save                | restore &  |
-        //               |   | trans               | inc        |
-        //   in          v   v       /-----------\ v trans      |
-        //  ==o==------==o==--------==o in  out o==-------==o|o=/     out
-        //       ^ cnter left        \-----------/     right |o==---==o==
-        //       | reset                                        ^
-        //         trans                          counter check |
-        //                                                trans
+        //                             repetition trans
+        //                   /---------------------------------------\
+        //                   |                                       |
+        //                   |   | counter              | counter    |
+        //                   |   | save                 | restore &  |
+        //                   |   | trans                | inc        |
+        //   in              v   v       /-----------\  v trans      |
+        //  ==o==-------=====o==--------==o in  out o==-------==o|o==/     out
+        //        ^ counter  left        \-----------/     right |o==----==o==
+        //        | reset                                             ^
+        //        | trans                               counter check |
+        //                                                      trans |
 
-        let port = self.emit_expression(expression)?;
-        // let counter_index = self.route.new_counter();
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let left_node_index = line.new_node();
-        let right_node_index = line.new_node();
+        let component = self.emit_expression(expression)?;
 
-        line.append_transition(
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let left_node_index = route.create_node();
+        let right_node_index = route.create_node();
+
+        route.create_transition_item(
             in_node_index,
             left_node_index,
             Transition::CounterReset(CounterResetTransition),
         );
 
-        line.append_transition(
+        route.create_transition_item(
             left_node_index,
-            port.in_node_index,
+            component.in_node_index,
             Transition::CounterSave(CounterSaveTransition),
         );
 
-        line.append_transition(
-            port.out_node_index,
+        route.create_transition_item(
+            component.out_node_index,
             right_node_index,
             Transition::CounterInc(CounterIncTransition),
         );
 
-        let out_node_index = line.new_node();
+        let out_node_index = route.create_node();
 
         if is_lazy {
-            //            let out_node_index = line.new_node();
-
-            line.append_transition(
+            route.create_transition_item(
                 right_node_index,
                 out_node_index,
                 Transition::CounterCheck(CounterCheckTransition::new(
@@ -816,7 +903,7 @@ impl<'a> Compiler<'a> {
                 )),
             );
 
-            line.append_transition(
+            route.create_transition_item(
                 right_node_index,
                 left_node_index,
                 Transition::Repetition(RepetitionTransition::new(
@@ -824,10 +911,8 @@ impl<'a> Compiler<'a> {
                     repetition_type,
                 )),
             );
-
-            // Ok(Port::new(in_node_index, out_node_index))
         } else {
-            line.append_transition(
+            route.create_transition_item(
                 right_node_index,
                 left_node_index,
                 Transition::Repetition(RepetitionTransition::new(
@@ -836,7 +921,7 @@ impl<'a> Compiler<'a> {
                 )),
             );
 
-            line.append_transition(
+            route.create_transition_item(
                 right_node_index,
                 out_node_index,
                 Transition::CounterCheck(CounterCheckTransition::new(
@@ -846,7 +931,7 @@ impl<'a> Compiler<'a> {
             );
         }
 
-        Ok(Port::new(in_node_index, out_node_index))
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
     fn emit_lookahead_assertion(
@@ -854,58 +939,62 @@ impl<'a> Compiler<'a> {
         current_expression: &Expression,
         next_expression: &Expression,
         negative: bool,
-    ) -> Result<Port, AnreError> {
-        // * is_before(A, B), A.is_before(B), A(?=B)
-        // * is_not_before(A, B), A.is_not_before(B), A(?!B)
+    ) -> Result<Component, AnreError> {
+        // Compile two kinds of look ahead assertions:
+        //
+        // - is_before(A, B), A.is_before(B), A(?=B)
+        // - is_not_before(A, B), A.is_not_before(B), A(?!B)
+        //
+        //                              | lookahead
+        //  in       /-----------\      v trans
+        // ==o==----==o in  out o==----------==o==
+        //      jump \-----------/            out
 
-        //                           | lookahead
-        //  in       /-----------\   v trans
-        // ==o==----==o in  out o==---==o==
-        //      jump \-----------/      out
+        let component = self.emit_expression(current_expression)?;
 
-        let port = self.emit_expression(current_expression)?;
+        // 1. save the current route index
+        // 2. create new route
+        let saved_route_index = self.current_route_index;
+        let sub_route_index = self.object_file.create_route();
 
-        // 1. save the current line index
-        // 2. create new line
-        let saved_line_index = self.current_line_index;
-        let sub_line_index = self.route.new_line();
-
-        // 3. switch to the new line
-        self.current_line_index = sub_line_index;
+        // 3. switch to the new route
+        self.current_route_index = sub_route_index;
 
         {
-            let sub_port = self.emit_expression(next_expression)?;
-            let sub_line = self.get_current_line_ref_mut();
+            let sub_component = self.emit_expression(next_expression)?;
 
-            // save the sub-program ports
-            sub_line.start_node_index = sub_port.in_node_index;
-            sub_line.end_node_index = sub_port.out_node_index;
-            sub_line.fixed_start_position = true;
+            // update the sub-route
+            let sub_route = self.get_current_route_ref_mut();
+            sub_route.start_node_index = sub_component.in_node_index;
+            sub_route.end_node_index = sub_component.out_node_index;
+            sub_route.is_fixed_start_position = true;
         }
 
-        // restore to the previous line
-        self.current_line_index = saved_line_index;
+        // 4. restore to the previous route
+        self.current_route_index = saved_route_index;
 
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
 
-        line.append_transition(
+        // 5. join the sub_route to the current route by
+        // appending jump transitions around the sub-component.
+        route.create_transition_item(
             in_node_index,
-            port.in_node_index,
+            component.in_node_index,
             Transition::Jump(JumpTransition),
         );
 
-        line.append_transition(
-            port.out_node_index,
+        route.create_transition_item(
+            component.out_node_index,
             out_node_index,
             Transition::LookAheadAssertion(LookAheadAssertionTransition::new(
-                sub_line_index,
+                sub_route_index,
                 negative,
             )),
         );
 
-        Ok(Port::new(in_node_index, out_node_index))
+        Ok(Component::new(in_node_index, out_node_index))
     }
 
     fn emit_lookbehind_assertion(
@@ -913,22 +1002,24 @@ impl<'a> Compiler<'a> {
         current_expression: &Expression,
         previous_expression: &Expression,
         negative: bool,
-    ) -> Result<Port, AnreError> {
-        // * is_after(A, B), A.is_after(B), (?<=B)A
-        // * is_not_after(A, B, A.is_not_after(B), (?<!B)A
-
+    ) -> Result<Component, AnreError> {
+        // Compile two kinds of look behind assertions:
+        //
+        // - is_after(A, B), A.is_after(B), (?<=B)A
+        // - is_not_after(A, B, A.is_not_after(B), (?<!B)A
+        //
         //       | lookbehind
-        //       v trans /-----------\        out
-        // ==o==--------==o in  out o==-----==o==
-        //  in           \-----------/  jump
+        //       v trans     /-----------\        out
+        // ==o==------------==o in  out o==-----==o==
+        //  in               \-----------/  jump
 
-        // 1. save the current line index
-        // 2. create new line
-        let saved_line_index = self.current_line_index;
-        let sub_line_index = self.route.new_line();
+        // 1. save the current route index
+        // 2. create new route
+        let saved_route_index = self.current_route_index;
+        let sub_route_index = self.object_file.create_route();
 
-        // 3. switch to the new line
-        self.current_line_index = sub_line_index;
+        // 3. switch to the new route
+        self.current_route_index = sub_route_index;
 
         let match_length_in_char = {
             // calculate the total length (in char) of patterns
@@ -939,53 +1030,56 @@ impl<'a> Compiler<'a> {
                 return Err(AnreError::SyntaxIncorrect("Look behind assertion (is_after, is_not_after) requires a fixed length pattern.".to_owned()));
             };
 
-            let sub_port = self.emit_expression(previous_expression)?;
-            let sub_line = self.get_current_line_ref_mut();
+            let sub_component = self.emit_expression(previous_expression)?;
+            let sub_route = self.get_current_route_ref_mut();
 
-            // save the sub-program ports
-            sub_line.start_node_index = sub_port.in_node_index;
-            sub_line.end_node_index = sub_port.out_node_index;
-            sub_line.fixed_start_position = true;
+            // update the sub-route
+            sub_route.start_node_index = sub_component.in_node_index;
+            sub_route.end_node_index = sub_component.out_node_index;
+            sub_route.is_fixed_start_position = true;
 
             length
         };
 
-        // restore to the previous line
-        self.current_line_index = saved_line_index;
+        // 4. restore to the previous route
+        self.current_route_index = saved_route_index;
 
-        let port = self.emit_expression(current_expression)?;
-        let line = self.get_current_line_ref_mut();
-        let in_node_index = line.new_node();
-        let out_node_index = line.new_node();
+        let component = self.emit_expression(current_expression)?;
+        let route = self.get_current_route_ref_mut();
+        let in_node_index = route.create_node();
+        let out_node_index = route.create_node();
 
-        line.append_transition(
+        // 5. join the sub_route to the current route by
+        // appending jump transitions around the sub-component.
+        route.create_transition_item(
             in_node_index,
-            port.in_node_index,
+            component.in_node_index,
             Transition::LookBehindAssertion(LookBehindAssertionTransition::new(
-                sub_line_index,
+                sub_route_index,
                 negative,
                 match_length_in_char,
             )),
         );
 
-        line.append_transition(
-            port.out_node_index,
+        route.create_transition_item(
+            component.out_node_index,
             out_node_index,
             Transition::Jump(JumpTransition),
         );
 
-        Ok(Port::new(in_node_index, out_node_index))
+        Ok(Component::new(in_node_index, out_node_index))
     }
 }
 
-struct Port {
+// A component is a pair of input node and output node.
+struct Component {
     in_node_index: usize,
     out_node_index: usize,
 }
 
-impl Port {
+impl Component {
     fn new(in_node_index: usize, out_node_index: usize) -> Self {
-        Port {
+        Component {
             in_node_index,
             out_node_index,
         }
@@ -1043,13 +1137,13 @@ mod tests {
     use pretty_assertions::assert_str_eq;
 
     use crate::{
-        route::{Route, MAIN_LINE_INDEX},
+        object_file::{ObjectFile, MAIN_ROUTE_INDEX},
         AnreError,
     };
 
     use super::{compile_from_anre, compile_from_regex};
 
-    fn generate_routes(anre: &str, regex: &str) -> [Route; 2] {
+    fn generate_routes(anre: &str, regex: &str) -> [ObjectFile; 2] {
         [
             compile_from_anre(anre).unwrap(),
             compile_from_regex(regex).unwrap(),
@@ -1600,7 +1694,7 @@ define(letter, ['a'..'f', char_space])
             );
 
             // check the 'fixed_start_position' property
-            assert!(route.lines[MAIN_LINE_INDEX].fixed_start_position);
+            assert!(route.routes[MAIN_ROUTE_INDEX].is_fixed_start_position);
         }
 
         for route in generate_routes(r#"is_not_bound, 'a', end"#, r#"\Ba$"#) {
@@ -1628,7 +1722,7 @@ define(letter, ['a'..'f', char_space])
             );
 
             // check the 'fixed_start_position' property
-            assert!(!route.lines[MAIN_LINE_INDEX].fixed_start_position);
+            assert!(!route.routes[MAIN_ROUTE_INDEX].is_fixed_start_position);
         }
 
         // err: assert "start" can only be present at the beginning of expression

@@ -1,8 +1,8 @@
-// Copyright (c) 2024 Hemashushu <hippospark@gmail.com>, All rights reserved.
+// Copyright (c) 2025 Hemashushu <hippospark@gmail.com>, All rights reserved.
 //
 // This Source Code Form is subject to the terms of
-// the Mozilla Public License version 2.0 and additional exceptions,
-// more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
 use std::fmt::Display;
 
@@ -87,12 +87,8 @@ impl Display for FunctionCallArg {
 
 impl Display for FunctionCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // if self.args.is_empty() {
-        //     write!(f, "{}({})", self.name, self.expression)
-        // } else {
         let s: Vec<String> = self.args.iter().map(|e| e.to_string()).collect();
         write!(f, "{}({})", self.name, s.join(", "))
-        // }
     }
 }
 

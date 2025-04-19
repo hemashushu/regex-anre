@@ -1,81 +1,79 @@
-// Copyright (c) 2024 Hemashushu <hippospark@gmail.com>, All rights reserved.
+// Copyright (c) 2025 Hemashushu <hippospark@gmail.com>, All rights reserved.
 //
 // This Source Code Form is subject to the terms of
-// the Mozilla Public License version 2.0 and additional exceptions,
-// more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
-// syntax summary
+// Syntax Summary:
 //
-// meta characters and their meanings:
+// Meta characters and their meanings:
 //
-// - [ ]      charset
-// - [^ ]     negative charset
-// - {m}      repeat
-// - {m,n}    repeat range
-// - {m,}     at least
-// - (xyz)    group
-// - *        0 or more
-// - +        1 or more
-// - ?        optional or lazy repetition
-// - |        logic or
-// - ^        beginning assertion
-// - $        end assertion
-// - .        any character except new line (\r and \n)
-// - \        to form escape character
+// - [ ]      Character set
+// - [^ ]     Negated character set
+// - {m}      Exact repetition (m times)
+// - {m,n}    Repetition range (m to n times)
+// - {m,}     At least m repetitions
+// - (xyz)    Grouping
+// - *        Zero or more repetitions
+// - +        One or more repetitions
+// - ?        Optional or lazy repetition
+// - |        Logical OR
+// - ^        Start-of-line assertion
+// - $        End-of-line assertion
+// - .        Any character except newline (\r and \n)
+// - \        Escape character for special symbols
 //
-// meta characters `( ) { } [ ] + * ? . | ^ $ \` need to be escaped when
-// used as literal characters, e.g. `\(`, `\*` and `\.`
-// whereas, only `]` and `\` need to be escaped in a charset, and also
-// if the hyphen `-` is not in the first or last position in the charset, e.g.:
-// `[ab-]`, `[a\-b]`
+// Notes on escaping meta characters:
+// Meta characters `( ) { } [ ] + * ? . | ^ $ \` must be escaped when used literally, e.g., `\(`, `\*`, and `\.`.
+// In character sets, only `]` and `\` need escaping. The hyphen `-` must be escaped unless it is the first or last character in the set, e.g., `[ab-]`, `[a\-b]`.
 //
-// escaped characters:
+// Escaped characters:
 //
-// - \t       horizontal tab
-// - \n       new line
-// - \r       carriage return
-// - \u{hhhh} unicode
-
-// - \f       form feed  (x)
-// - \v       vertical tab  (x)
-// - \0       (x)
-
+// - \t       Horizontal tab
+// - \n       Newline
+// - \r       Carriage return
+// - \u{hhhh} Unicode character (hexadecimal code point)
 //
-// preset charsets:
+// Unsupported escape sequences:
+// - \f       Form feed
+// - \v       Vertical tab
+// - \0       Null character
 //
-// - \w       alphanumeric characters: [a-zA-Z0-9_]
-// - \W       [^\w]
-// - \d       digits: [0-9]
-// - \D       [^\d]
-// - \s       whitespaces [ \t\r\n\v\f]
-// - \S       [^\s]
+// Preset character sets:
 //
-// boundary assertions:
-// - \b       word boundary
-// - \B       not word boundary
+// - \w       Alphanumeric characters: [a-zA-Z0-9_]
+// - \W       Negated \w: [^\w]
+// - \d       Digits: [0-9]
+// - \D       Negated \d: [^\d]
+// - \s       Whitespace characters: [ \t\r\n\v\f]
+// - \S       Negated \s: [^\s]
 //
-// non-capturing groups:
-// - (?:...)
+// Boundary assertions:
+// - \b       Word boundary
+// - \B       Not a word boundary
 //
-// named capture group
-// - (?<name>...)
+// Non-capturing groups:
+// - (?:...)  Non-capturing group
 //
-// back references:
-// - \number  by number, e.g. `\1`, `\2` and `\3`
-// - \k<name> by name
+// Named capture groups:
+// - (?<name>...)  Named group with identifier `name`
 //
-// lookaround assertions:
+// Backreferences:
+// - \number  Backreference by group number, e.g., `\1`, `\2`
+// - \k<name> Backreference by group name
 //
-// - (?=...)  lookahead
-// - (?!...)  negative lookahead
-// - (?<=...) lookbehind
-// - (?<!...) negative lookbehind
+// Lookaround assertions:
+//
+// - (?=...)  Positive lookahead
+// - (?!...)  Negative lookahead
+// - (?<=...) Positive lookbehind
+// - (?<!...) Negative lookbehind
 
 use crate::{
     charwithposition::{CharWithPosition, CharsWithPositionIter},
-    AnreError,
     location::Location,
     peekableiter::PeekableIter,
+    AnreError,
 };
 
 use super::token::{Repetition, Token, TokenWithRange};
@@ -147,7 +145,11 @@ impl<'a> Lexer<'a> {
         self.saved_positions.pop().unwrap()
     }
 
-    fn expect_char(&mut self, expected_char: char, char_description: &str) -> Result<(), AnreError> {
+    fn expect_char(
+        &mut self,
+        expected_char: char,
+        char_description: &str,
+    ) -> Result<(), AnreError> {
         match self.next_char() {
             Some(ch) => {
                 if ch == expected_char {
@@ -999,9 +1001,9 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        AnreError,
         location::Location,
-        tradition::token::{Repetition, Token, TokenWithRange},
+        traditional::token::{Repetition, Token, TokenWithRange},
+        AnreError,
     };
 
     use super::lex_from_str;

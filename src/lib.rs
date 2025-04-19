@@ -1,27 +1,28 @@
-// Copyright (c) 2024 Hemashushu <hippospark@gmail.com>, All rights reserved.
+// Copyright (c) 2025 Hemashushu <hippospark@gmail.com>, All rights reserved.
 //
 // This Source Code Form is subject to the terms of
-// the Mozilla Public License version 2.0 and additional exceptions,
-// more details in file LICENSE, LICENSE.additional and CONTRIBUTING.
+// the Mozilla Public License version 2.0 and additional exceptions.
+// For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
 mod anre;
 mod ast;
 mod charwithposition;
 mod compiler;
+mod context;
 mod errorprinter;
-mod instance;
 mod location;
 mod peekableiter;
 mod printer;
 mod rulechecker;
-mod tradition;
+mod traditional;
 mod transition;
 mod utf8reader;
 
+pub mod object_file;
 pub mod process;
-pub mod route;
+pub mod regex;
 
-pub use process::Regex;
+pub use regex::Regex;
 
 use std::fmt::{self, Display};
 
