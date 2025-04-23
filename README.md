@@ -25,6 +25,23 @@
 
 ## Quick Start
 
+Add the crate "regex_anre" to your project by command line:
+
+```bash
+cargo add regex_anre
+```
+
+or by manually adding it to your `Cargo.toml` file:
+
+```toml
+[dependencies]
+regex_anre = "1.2.0"
+```
+
+Then, you can use it in your code:
+
+```
+
 ```rust
 use regex_anre::Regex;
 

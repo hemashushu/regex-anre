@@ -8,19 +8,22 @@ use crate::{location::Location, peekableiter::PeekableIter};
 
 use super::token::{Token, TokenWithRange};
 
+/// Normalizes tokens by combining multiple continuous newlines into one and handling commas.
+/// Rules:
+/// - Multiple newlines are reduced to a single newline.
+/// - A comma followed by newlines is reduced to a single comma.
+/// - Newlines followed by a comma are reduced to a single comma.
+/// - Leading and trailing newlines in the document are removed.
+///
+/// ```diagram
+/// - blanks => blank
+/// - comma + blank(s) => comma
+/// - blank(s) + comma => comma
+/// - blank(s) + comma + blank(s) => comma
+/// - comma + comment(s) + comma => comma + comma
+/// - blank(s) + comment(s) + blank(s) => blank
+/// ```
 pub fn normalize(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
-    // combine multiple continuous newlines into one newline.
-    // rules:
-    //   + blanks => blank
-    //   + comma + blank(s) => comma
-    //   + blank(s) + comma => comma
-    //   + blank(s) + comma + blank(s) => comma
-    //
-    // because the comments have been removed, the following conclusions
-    // can be inferred:
-    //   + comma + comment(s) + comma => comma + comma
-    //   + blank(s) + comment(s) + blank(s) => blank
-
     let mut token_iter = tokens.into_iter();
     let mut peekable_token_iter = PeekableIter::new(&mut token_iter, 1);
     let mut normalized_tokens: Vec<TokenWithRange> = vec![];
@@ -128,8 +131,8 @@ mod tests {
             lexer::lex_from_str,
             token::{Token, TokenWithRange},
         },
-        AnreError,
         location::Location,
+        AnreError,
     };
 
     use super::normalize;

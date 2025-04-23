@@ -392,7 +392,7 @@ impl Lexer<'_> {
             "start" | "end" => Token::AnchorAssertion(name_string),
             "is_bound" | "is_not_bound" => Token::BoundaryAssertion(name_string),
             "char_space" | "char_not_space" | "char_word" | "char_not_word" | "char_digit"
-            | "char_not_digit" => Token::PresetCharSet(name_string),
+            | "char_not_digit" | "char_hex" => Token::PresetCharSet(name_string),
             "char_any" => Token::Special(name_string),
             _ => Token::Identifier(name_string),
         };
@@ -778,8 +778,9 @@ impl Lexer<'_> {
         let mut comment_string = String::new();
 
         while let Some(current_char) = self.peek_char(0) {
-            // ignore all chars except '\n' or '\r\n'
-            // note that the "line comment token" does not include the trailing new line chars (\n or \r\n),
+            // Ignore all chars except '\n' or '\r\n'
+            // Note: the "line comment token" does not include the
+            // trailing new line chars (\n or \r\n),
 
             match current_char {
                 '\n' => {
@@ -1143,7 +1144,7 @@ mod tests {
     fn test_lex_preset_charset() {
         assert_eq!(
             lex_from_str_without_location(
-                "char_space char_not_space char_word char_not_word char_digit char_not_digit"
+                "char_space char_not_space char_word char_not_word char_digit char_not_digit char_hex"
             )
             .unwrap(),
             vec![
@@ -1153,6 +1154,7 @@ mod tests {
                 Token::new_preset_charset("char_not_word"),
                 Token::new_preset_charset("char_digit"),
                 Token::new_preset_charset("char_not_digit"),
+                Token::new_preset_charset("char_hex"),
             ]
         );
 

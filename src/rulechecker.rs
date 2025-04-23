@@ -6,7 +6,7 @@
 
 use std::ops::{Add, BitOr, Mul};
 
-use crate::ast::{Expression, FunctionCallArg, FunctionName, Literal};
+use crate::ast::{Expression, FunctionName, Literal};
 
 pub enum MatchLength {
     Variable,
@@ -58,9 +58,16 @@ impl BitOr for MatchLength {
     }
 }
 
+/// Get the match length of an expression.
+///
+/// The match length is the number of characters that the expression can match.
+/// The look behind assertion requires the match length to be fixed.
 pub fn get_match_length(exp: &Expression) -> MatchLength {
     match exp {
         Expression::Literal(literal) => match literal {
+            Literal::Number(_) => {
+                panic!("Syntax error: number literal is only allowed in repetition.")
+            }
             Literal::Char(_) => MatchLength::Fixed(1),
             Literal::String(s) => MatchLength::Fixed(s.chars().count()),
             Literal::Special(_) => MatchLength::Fixed(1),
@@ -80,13 +87,9 @@ pub fn get_match_length(exp: &Expression) -> MatchLength {
             FunctionName::OneOrMore => MatchLength::Variable,
             FunctionName::ZeroOrMore => MatchLength::Variable,
             FunctionName::Repeat => {
-                let base_exp = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
-                let factor = if let FunctionCallArg::Number(f) = &function_call.args[1] {
+                let base_exp = &function_call.args[0];
+                let factor = if let Expression::Literal(Literal::Number(f)) = &function_call.args[1]
+                {
                     *f
                 } else {
                     unreachable!()
@@ -102,69 +105,29 @@ pub fn get_match_length(exp: &Expression) -> MatchLength {
             FunctionName::RepeatRangeLazy => MatchLength::Variable,
             FunctionName::AtLeastLazy => MatchLength::Variable,
             FunctionName::IsBefore => {
-                let base_exp = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
+                let base_exp = &function_call.args[0];
                 get_match_length(base_exp)
             }
             FunctionName::IsAfter => {
-                let base_exp = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
-                let ref_exp = if let FunctionCallArg::Expression(e) = &function_call.args[1] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
+                let base_exp = &function_call.args[0];
+                let ref_exp = &function_call.args[1];
                 get_match_length(base_exp) + get_match_length(ref_exp)
             }
             FunctionName::IsNotBefore => {
-                let base_exp = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
+                let base_exp = &function_call.args[0];
                 get_match_length(base_exp)
             }
             FunctionName::IsNotAfter => {
-                let base_exp = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
-                let ref_exp = if let FunctionCallArg::Expression(e) = &function_call.args[1] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
+                let base_exp = &function_call.args[0];
+                let ref_exp = &function_call.args[1];
                 get_match_length(base_exp) + get_match_length(ref_exp)
             }
             FunctionName::Name => {
-                let base_exp = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
+                let base_exp = &function_call.args[0];
                 get_match_length(base_exp)
             }
             FunctionName::Index => {
-                let base_exp = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
-
+                let base_exp = &function_call.args[0];
                 get_match_length(base_exp)
             }
         },

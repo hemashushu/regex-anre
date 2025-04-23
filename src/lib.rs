@@ -33,9 +33,9 @@ pub enum AnreError {
     SyntaxIncorrect(String),
     UnexpectedEndOfDocument(String),
 
-    // note that the "index" (and the result of "index+length") may exceed
-    // the last index of string, for example, the "char incomplete" error raised by a string `'a`,
-    // which index is 2.
+    // The "index" (and the result of "index + length") may exceed
+    // the last index of the string. For example, the "char incomplete" error
+    // raised by a string `'a` has an index of 2.
     MessageWithLocation(String, Location),
 }
 
@@ -44,7 +44,7 @@ impl Display for AnreError {
         match self {
             AnreError::SyntaxIncorrect(msg) => f.write_str(msg),
             AnreError::UnexpectedEndOfDocument(detail) => {
-                writeln!(f, "Unexpected to reach the end of document.")?;
+                writeln!(f, "Unexpected end of document.")?;
                 write!(f, "{}", detail)
             }
             AnreError::MessageWithLocation(detail, location) => {

@@ -1677,6 +1677,30 @@ mod tests {
     }
 
     #[test]
+    fn test_logic_or() {
+        assert_eq!(
+            lex_from_str(r#"a|b"#).unwrap(),
+            vec![
+                TokenWithRange::from_position_and_length(
+                    Token::Char('a'),
+                    &Location::new_position(/*0,*/ 0, 0, 0),
+                    1
+                ),
+                TokenWithRange::from_position_and_length(
+                    Token::LogicOr,
+                    &Location::new_position(/*0,*/ 1, 0, 1),
+                    1
+                ),
+                TokenWithRange::from_position_and_length(
+                    Token::Char('b'),
+                    &Location::new_position(/*0,*/ 2, 0, 2),
+                    1
+                ),
+            ]
+        );
+    }
+
+    #[test]
     fn test_group_and_backreference() {
         assert_eq!(
             lex_from_str(r#"(a)(?:b)(?<c>d)\1\k<e>"#).unwrap(),
@@ -1802,8 +1826,6 @@ mod tests {
                 }
             ))
         ));
-
-        println!("{:?}", lex_from_str(r#"(?abc)"#));
 
         // err: incomplete group structure
         assert!(matches!(

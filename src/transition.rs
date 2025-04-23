@@ -171,7 +171,7 @@ impl CharTransition {
 impl StringTransition {
     pub fn new(s: &str) -> Self {
         let chars: Vec<u32> = s.chars().map(|item| item as u32).collect();
-        let byte_length = s.as_bytes().len();
+        let byte_length = s.len();
         StringTransition {
             codepoints: chars,
             byte_length,
@@ -233,6 +233,12 @@ impl CharSetTransition {
         add_preset_digit(&mut items);
         CharSetTransition::new(items, true)
     }
+
+    pub fn new_preset_hex() -> Self {
+        let mut items: Vec<CharSetItem> = vec![];
+        add_preset_hex(&mut items);
+        CharSetTransition::new(items, false)
+    }
 }
 
 pub fn add_char(items: &mut Vec<CharSetItem>, c: char) {
@@ -264,6 +270,13 @@ pub fn add_preset_word(items: &mut Vec<CharSetItem>) {
 pub fn add_preset_digit(items: &mut Vec<CharSetItem>) {
     // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions/Character_classes
     // [0-9]
+    add_range(items, '0', '9');
+}
+
+pub fn add_preset_hex(items: &mut Vec<CharSetItem>) {
+    // [a-fA-F0-9]
+    add_range(items, 'A', 'F');
+    add_range(items, 'a', 'f');
     add_range(items, '0', '9');
 }
 

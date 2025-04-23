@@ -17,7 +17,7 @@ pub struct Context<'a> {
     // it is necessary to record sub-routines using a stack.
     pub routines: Vec<Routine>,
 
-    // Pre-allocated match slots.
+    // Pre-allocated capture group slots.
     pub match_ranges: Vec<MatchRange>,
 
     // Stack to store repetition counts.
@@ -112,6 +112,7 @@ impl TransitionStackItem {
     }
 }
 
+/// Represents the text range of capture group.
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct MatchRange {
     pub start: usize, // Start position (inclusive).

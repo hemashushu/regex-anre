@@ -1310,8 +1310,6 @@ mod tests {
             r#"("0x" || "0o" || "0b").index(), (char_digit+).index()"#, // ANRE
             r#"(0x|0o|0b)(\d+)"#,                                       // traditional
         ) {
-            // let re = Regex::from_anre(r#"("0x" || "0o" || "0b").index(), (char_digit+).index()"#)
-            //     .unwrap();
             let text = "abc0x23def0o456xyz";
 
             let mut matches = re.captures_iter(text);
@@ -1337,13 +1335,9 @@ mod tests {
 
         // named
         for re in generate_res(
-            r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#, // ANRE
+            r#"("0x" || "0o" || "0b").name("prefix"), (char_digit+).name("number")"#, // ANRE
             r#"(?<prefix>0x|0o|0b)(?<number>\d+)"#,                               // traditional
         ) {
-            // let re = Regex::from_anre(
-            //     r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#,
-            // )
-            // .unwrap();
             let text = "abc0x23def0o456xyz";
 
             let mut matches = re.captures_iter(text);
@@ -1369,7 +1363,7 @@ mod tests {
 
         // named - by Regex::captures_iter(...)
         for re in generate_res(
-            r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#, // ANRE
+            r#"("0x" || "0o" || "0b").name("prefix"), (char_digit+).name("number")"#, // ANRE
             r#"(?<prefix>0x|0o|0b)(?<number>\d+)"#,                               // traditional
         ) {
             // let re = Regex::from_anre(
@@ -1407,7 +1401,7 @@ mod tests {
 
         // named - by Regex::find_iter(...)
         for re in generate_res(
-            r#"("0x" || "0o" || "0b").name(prefix), (char_digit+).name(number)"#, // ANRE
+            r#"("0x" || "0o" || "0b").name("prefix"), (char_digit+).name("number")"#, // ANRE
             r#"(?<prefix>0x|0o|0b)(?<number>\d+)"#,                               // traditional
         ) {
             // let re = Regex::from_anre(
@@ -1432,7 +1426,7 @@ mod tests {
     fn test_process_backreference() {
         for re in generate_res(
             r#"
-            ('<', (char_word+).name(tag_name), '>'),
+            ('<', (char_word+).name("tag_name"), '>'),
             char_any+,
             ("</", tag_name, '>')
             "#, // ANRE
@@ -1461,20 +1455,12 @@ mod tests {
         // backreference + lazy
         for re in generate_res(
             r#"
-            ('<', (char_word+).name(tag_name), '>'),
+            ('<', (char_word+).name("tag_name"), '>'),
             char_any+?,
             ("</", tag_name, '>')
             "#, // ANRE
             r#"<(?<tag_name>\w+)>.+?</\k<tag_name>>"#, // traditional
         ) {
-            // let re = Regex::from_anre(
-            //     r#"
-            // ('<', (char_word+).name(tag), '>'),
-            // char_any+?,
-            // ("</", tag, '>')
-            // "#,
-            // )
-            // .unwrap();
             let text = "zero<div>one<div>two</div>three</div>four";
             let mut matches = re.captures_iter(text);
 

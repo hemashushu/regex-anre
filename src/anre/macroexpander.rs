@@ -4,10 +4,11 @@
 // the Mozilla Public License version 2.0 and additional exceptions.
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
-use crate::{AnreError, location::Location, peekableiter::PeekableIter};
+use crate::{location::Location, peekableiter::PeekableIter, AnreError};
 
 use super::token::{Token, TokenWithRange};
 
+/// Extracts macro definitions from the token stream.
 fn extract_definitions(
     mut tokens: Vec<TokenWithRange>,
 ) -> Result<(Vec<TokenWithRange>, Vec<Definition>), AnreError> {
@@ -71,6 +72,7 @@ fn extract_definitions(
     Ok((tokens, definitions))
 }
 
+/// Replaces identifiers in the token stream with their corresponding macro definitions.
 fn replace_identifiers(
     mut program_tokens: Vec<TokenWithRange>,
     mut definitions: Vec<Definition>,
@@ -106,8 +108,8 @@ fn find_and_replace_identifiers(
     }
 }
 
-/// The input tokens must be removed from comments
-/// and normalized.
+/// Expands macros in the token stream by replacing defined identifiers with their corresponding tokens.
+/// The input tokens must be free of comments and normalized.
 pub fn expand(tokens: Vec<TokenWithRange>) -> Result<Vec<TokenWithRange>, AnreError> {
     let (program_tokens, definitions) = extract_definitions(tokens)?;
     let expand_tokens = replace_identifiers(program_tokens, definitions);

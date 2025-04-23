@@ -7,8 +7,7 @@
 use std::fmt::Display;
 
 use crate::ast::{
-    CharRange, CharSet, CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName,
-    Literal, Program,
+    CharRange, CharSet, CharSetElement, Expression, FunctionCall, FunctionName, Literal, Program,
 };
 
 impl Display for FunctionName {
@@ -66,6 +65,7 @@ impl Display for CharSet {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Literal::Number(i) => write!(f, "{}", i),
             Literal::Char(c) => write!(f, "'{}'", c),
             Literal::String(s) => write!(f, "\"{}\"", s),
             Literal::CharSet(c) => write!(f, "{}", c),
@@ -75,15 +75,16 @@ impl Display for Literal {
     }
 }
 
-impl Display for FunctionCallArg {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FunctionCallArg::Number(i) => write!(f, "{}", i),
-            FunctionCallArg::Identifier(s) => write!(f, "{}", s),
-            FunctionCallArg::Expression(e) => write!(f, "{}", e),
-        }
-    }
-}
+// impl Display for FunctionCallArg {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             FunctionCallArg::Number(i) => write!(f, "{}", i),
+//             FunctionCallArg::Identifier(s) => write!(f, "{}", s),
+//             FunctionCallArg::String(s) => write!(f, "\"{}\"", s),
+//             FunctionCallArg::Expression(e) => write!(f, "{}", e),
+//         }
+//     }
+// }
 
 impl Display for FunctionCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

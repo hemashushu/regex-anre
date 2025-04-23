@@ -7,7 +7,7 @@
 use super::token::{Token, TokenWithRange};
 
 pub fn clean(tokens: Vec<TokenWithRange>) -> Vec<TokenWithRange> {
-    // remove all comments.
+    // Filters out all tokens that represent comments.
     let clean_tokens: Vec<TokenWithRange> = tokens
         .into_iter()
         .filter(|e| {
@@ -33,19 +33,21 @@ mod tests {
             lexer::lex_from_str,
             token::{Token, TokenWithRange},
         },
-        AnreError,
         location::Location,
+        AnreError,
     };
 
     use super::clean;
 
     fn clean_and_lex_from_str(s: &str) -> Result<Vec<TokenWithRange>, AnreError> {
+        // Tokenizes the input string, removes comments, and returns the cleaned tokens.
         let tokens = lex_from_str(s)?;
         let clean_tokens = clean(tokens);
         Ok(clean_tokens)
     }
 
     fn clean_and_lex_from_str_without_location(s: &str) -> Result<Vec<Token>, AnreError> {
+        // Similar to `clean_and_lex_from_str` but returns only the tokens without their locations.
         let tokens = clean_and_lex_from_str(s)?
             .into_iter()
             .map(|e| e.token)
@@ -55,6 +57,7 @@ mod tests {
 
     #[test]
     fn test_clean_comments() {
+        // Tests the removal of both line and block comments from the tokenized input.
         assert_eq!(
             clean_and_lex_from_str_without_location(
                 r#"'1' // line comment 1
@@ -79,6 +82,7 @@ mod tests {
             ]
         );
 
+        // Tests the removal of inline block comments while preserving other tokens.
         assert_eq!(
             clean_and_lex_from_str(r#"'1' /* foo */ '3'"#).unwrap(),
             vec![

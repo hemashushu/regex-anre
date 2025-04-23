@@ -9,8 +9,8 @@ pub const PARSER_PEEK_TOKEN_MAX_COUNT: usize = 4;
 use crate::{
     ast::{
         AnchorAssertionName, BackReference, BoundaryAssertionName, CharRange, CharSet,
-        CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
-        PresetCharSetName, Program, SpecialCharName,
+        CharSetElement, Expression, FunctionCall, FunctionName, Literal, PresetCharSetName,
+        Program, SpecialCharName,
     },
     location::Location,
     peekableiter::PeekableIter,
@@ -70,8 +70,8 @@ impl<'a> Parser<'a> {
 
     /// Returns:
     /// - `None` if the specified token is not found.
-    /// - `Some(false)` found the token without new-line.
-    /// - `Some(true)` found the token and new-line.
+    /// - `Some(false)` if the token is found without a newline.
+    /// - `Some(true)` if the token is found and preceded by a newline.
     fn expect_token_ignore_newline(&self, offset: usize, expected_token: &Token) -> Option<bool> {
         if self.expect_token(offset, expected_token) {
             Some(false)
@@ -84,7 +84,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // consume '\n' if it exists.
+    // Consumes a newline (`\n`) if it exists.
     fn consume_new_line_if_exist(&mut self) -> bool {
         match self.peek_token(0) {
             Some(Token::NewLine) => {
@@ -95,7 +95,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // consume '\n' or ',' if they exist.
+    // Consumes a newline (`\n`) or a comma (`,`) if they exist.
     fn consume_new_line_or_comma_if_exist(&mut self) -> bool {
         match self.peek_token(0) {
             Some(Token::NewLine | Token::Comma) => {
@@ -342,8 +342,7 @@ impl Parser<'_> {
 
                     let function_call = FunctionCall {
                         name,
-                        // expression: Box::new(expression),
-                        args: vec![FunctionCallArg::Expression(Box::new(expression))],
+                        args: vec![expression],
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
 
@@ -355,7 +354,7 @@ impl Parser<'_> {
                     let (notation_quantifier, lazy) = self.continue_parse_notation_quantifier()?;
 
                     let mut args = vec![];
-                    args.push(FunctionCallArg::Expression(Box::new(expression)));
+                    args.push(expression);
 
                     let name = match notation_quantifier {
                         NotationQuantifier::Repeat(n) => {
@@ -364,7 +363,7 @@ impl Parser<'_> {
                                     "Specified number of repetitions does not support lazy mode, i.e. '{m}?' is not allowed.".to_owned(), self.last_range));
                             }
 
-                            args.push(FunctionCallArg::Number(n));
+                            args.push(Expression::Literal(Literal::Number(n)));
                             FunctionName::Repeat
                         }
                         NotationQuantifier::RepeatRange(m, n) => {
@@ -373,8 +372,8 @@ impl Parser<'_> {
                                     "Specified number of repetitions does not support lazy mode, i.e. '{m,m}?' is not allowed.".to_owned(), self.last_range));
                             }
 
-                            args.push(FunctionCallArg::Number(m));
-                            args.push(FunctionCallArg::Number(n));
+                            args.push(Expression::Literal(Literal::Number(m)));
+                            args.push(Expression::Literal(Literal::Number(n)));
 
                             if lazy {
                                 FunctionName::RepeatRangeLazy
@@ -383,7 +382,7 @@ impl Parser<'_> {
                             }
                         }
                         NotationQuantifier::AtLeast(n) => {
-                            args.push(FunctionCallArg::Number(n));
+                            args.push(Expression::Literal(Literal::Number(n)));
 
                             if lazy {
                                 FunctionName::AtLeastLazy
@@ -393,11 +392,7 @@ impl Parser<'_> {
                         }
                     };
 
-                    let function_call = FunctionCall {
-                        name,
-                        // expression: Box::new(expression),
-                        args,
-                    };
+                    let function_call = FunctionCall { name, args };
                     expression = Expression::FunctionCall(Box::new(function_call));
                 }
                 _ => {
@@ -431,13 +426,14 @@ impl Parser<'_> {
 
         let from = self.consume_number()?;
 
-        // the comma that follows the first number is NOT a separator, it
-        // can not be replaced by a newline like a normal comma,
-        // its presence indicates that there is a second number, or that
-        // the value of the second number is infinite.
+        // About the `{m,}` quantifier:
+        // The comma following the first number is NOT a typical separator.
+        // It cannot be replaced by a newline like a normal comma.
+        // Its presence indicates either the existence of a second number or that
+        // the second number is implicitly infinite.
 
         let (dual, to_optional) = if self.expect_token(0, &Token::Comma) {
-            // example:
+            // Example:
             //
             // `{m,}` `{m,n}`
             //
@@ -466,7 +462,7 @@ impl Parser<'_> {
         } else if self.expect_token(0, &Token::NewLine)
             && matches!(self.peek_token(1), Some(Token::Number(_)))
         {
-            // example:
+            // Example:
             //
             // ```
             // {
@@ -485,7 +481,7 @@ impl Parser<'_> {
 
             (true, to_optional)
         } else {
-            // example:
+            // Example:
             //
             // `{m}`
             //
@@ -545,29 +541,15 @@ impl Parser<'_> {
         self.consume_new_line_if_exist(); // consume trailing new-line
 
         let mut args = vec![];
-        args.push(FunctionCallArg::Expression(Box::new(expression)));
+        args.push(expression);
 
         while let Some(token) = self.peek_token(0) {
             if token == &Token::RightParen {
                 break;
             }
 
-            match token {
-                Token::Number(num_ref) => {
-                    let num = *num_ref;
-                    self.next_token(); // consume number
-                    args.push(FunctionCallArg::Number(num));
-                }
-                Token::Identifier(id_ref) => {
-                    let id = id_ref.to_owned();
-                    self.next_token(); // consume identifier
-                    args.push(FunctionCallArg::Identifier(id));
-                }
-                _ => {
-                    let expression = self.parse_expression()?;
-                    args.push(FunctionCallArg::Expression(Box::new(expression)));
-                }
-            }
+            let expression = self.parse_expression()?;
+            args.push(expression);
 
             let found_sep = self.consume_new_line_or_comma_if_exist();
             if !found_sep {
@@ -703,9 +685,6 @@ impl Parser<'_> {
         self.consume_left_paren()?; // consume '('
         self.consume_new_line_if_exist(); // consume trailing new-line
 
-        // let expression = self.parse_expression()?;
-        // self.consume_new_line_or_comma_if_exist(); // consume trailing new-line
-
         let mut args = vec![];
 
         while let Some(token) = self.peek_token(0) {
@@ -713,26 +692,8 @@ impl Parser<'_> {
                 break;
             }
 
-            match token {
-                Token::Number(num_ref) => {
-                    let num = *num_ref;
-                    self.next_token(); // consume number
-                    args.push(FunctionCallArg::Number(num));
-                }
-                Token::Identifier(id_ref)
-                    if self
-                        .expect_token_ignore_newline(1, &Token::LeftParen)
-                        .is_none() =>
-                {
-                    let id = id_ref.to_owned();
-                    self.next_token(); // consume identifier
-                    args.push(FunctionCallArg::Identifier(id));
-                }
-                _ => {
-                    let expression = self.parse_expression()?;
-                    args.push(FunctionCallArg::Expression(Box::new(expression)));
-                }
-            }
+            let expression = self.parse_expression()?;
+            args.push(expression);
 
             let found_sep = self.consume_new_line_or_comma_if_exist();
             if !found_sep {
@@ -783,6 +744,11 @@ impl Parser<'_> {
                             negative: true,
                             elements,
                         })
+                    }
+                    Token::Number(number_ref) => {
+                        let number = *number_ref;
+                        self.next_token(); // consume number
+                        Literal::Number(number)
                     }
                     Token::Char(char_ref) => {
                         let c = *char_ref;
@@ -985,6 +951,7 @@ fn preset_charset_name_from_str(
         "char_not_space" => PresetCharSetName::CharNotSpace,
         "char_digit" => PresetCharSetName::CharDigit,
         "char_not_digit" => PresetCharSetName::CharNotDigit,
+        "char_hex" => PresetCharSetName::CharHex,
 
         // Unexpect
         _ => {
@@ -1181,7 +1148,7 @@ mod tests {
 optional('a')
 one_or_more('b')
 zero_or_more_lazy('c')
-name("xyz", prefix)
+name("xyz", "prefix")
     "#,
             )
             .unwrap()
@@ -1189,7 +1156,7 @@ name("xyz", prefix)
             r#"optional('a')
 one_or_more('b')
 zero_or_more_lazy('c')
-name("xyz", prefix)"#
+name("xyz", "prefix")"#
         );
 
         // test multiline args
@@ -1262,7 +1229,7 @@ one_or_more
 'a'.optional()
 'b'.one_or_more()
 'c'.zero_or_more_lazy()
-"xyz".name(prefix)
+"xyz".name("prefix")
     "#,
             )
             .unwrap()
@@ -1270,7 +1237,7 @@ one_or_more
             r#"optional('a')
 one_or_more('b')
 zero_or_more_lazy('c')
-name("xyz", prefix)"#
+name("xyz", "prefix")"#
         );
 
         // test multiline args

@@ -7,8 +7,8 @@
 use crate::{
     ast::{
         AnchorAssertionName, BackReference, BoundaryAssertionName, CharRange, CharSet,
-        CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
-        PresetCharSetName, Program,
+        CharSetElement, Expression, FunctionCall, FunctionName, Literal, PresetCharSetName,
+        Program,
     },
     object_file::{ObjectFile, Route},
     rulechecker::{get_match_length, MatchLength},
@@ -202,6 +202,12 @@ impl<'a> Compiler<'a> {
     /// Compile an expression to a component
     fn emit_expression(&mut self, expression: &Expression) -> Result<Component, AnreError> {
         let result = match expression {
+            // Expression::Identifier(id) => {
+            //     return Err(AnreError::SyntaxIncorrect(format!(
+            //         "Identifier is only allowed in backreference, identifier: {}.",
+            //         id
+            //     )));
+            // }
             Expression::Literal(literal) => self.emit_literal(literal)?,
             Expression::BackReference(back_reference) => self.emit_backreference(back_reference)?,
             Expression::AnchorAssertion(name) => {
@@ -209,7 +215,7 @@ impl<'a> Compiler<'a> {
                 match name {
                     AnchorAssertionName::Start => {
                         return Err(AnreError::SyntaxIncorrect(
-                            "The assertion \"start\" can only exist at the beginning of an expression.".to_owned()));
+                                    "The assertion \"start\" can only exist at the beginning of an expression.".to_owned()));
                     }
                     AnchorAssertionName::End => {
                         return Err(AnreError::SyntaxIncorrect(
@@ -350,12 +356,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_function_call(&mut self, function_call: &FunctionCall) -> Result<Component, AnreError> {
-        let expression = if let FunctionCallArg::Expression(e) = &function_call.args[0] {
-            e
-        } else {
-            unreachable!()
-        };
-
+        let expression = &function_call.args[0];
         let args = &function_call.args[1..];
 
         let is_lazy = matches!(
@@ -382,7 +383,7 @@ impl<'a> Compiler<'a> {
                 self.continue_emit_optional(component, is_lazy)
             }
             FunctionName::Repeat => {
-                let times = if let FunctionCallArg::Number(n) = &args[0] {
+                let times = if let Expression::Literal(Literal::Number(n)) = &args[0] {
                     *n
                 } else {
                     unreachable!()
@@ -403,13 +404,13 @@ impl<'a> Compiler<'a> {
                 }
             }
             FunctionName::RepeatRange | FunctionName::RepeatRangeLazy => {
-                let from = if let FunctionCallArg::Number(n) = &args[0] {
+                let from = if let Expression::Literal(Literal::Number(n)) = &args[0] {
                     *n
                 } else {
                     unreachable!()
                 };
 
-                let to = if let FunctionCallArg::Number(n) = &args[1] {
+                let to = if let Expression::Literal(Literal::Number(n)) = &args[1] {
                     *n
                 } else {
                     unreachable!()
@@ -451,7 +452,7 @@ impl<'a> Compiler<'a> {
                 }
             }
             FunctionName::AtLeast | FunctionName::AtLeastLazy => {
-                let from = if let FunctionCallArg::Number(n) = &args[0] {
+                let from = if let Expression::Literal(Literal::Number(n)) = &args[0] {
                     *n
                 } else {
                     unreachable!()
@@ -478,11 +479,7 @@ impl<'a> Compiler<'a> {
                     ));
                 }
 
-                let next_expression = if let FunctionCallArg::Expression(e) = &args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
+                let next_expression = &args[0];
 
                 let negative = function_call.name == FunctionName::IsNotBefore;
                 self.emit_lookahead_assertion(expression, next_expression, negative)
@@ -496,11 +493,7 @@ impl<'a> Compiler<'a> {
                     ));
                 }
 
-                let previous_expression = if let FunctionCallArg::Expression(e) = &args[0] {
-                    e
-                } else {
-                    unreachable!()
-                };
+                let previous_expression = &args[0];
 
                 let negative = function_call.name == FunctionName::IsNotAfter;
                 self.emit_lookbehind_assertion(expression, previous_expression, negative)
@@ -528,6 +521,12 @@ impl<'a> Compiler<'a> {
 
     fn emit_literal(&mut self, literal: &Literal) -> Result<Component, AnreError> {
         let component = match literal {
+            Literal::Number(n) => {
+                return Err(AnreError::SyntaxIncorrect(format!(
+                    "Number literal is only allowed in repetition, number: {}.",
+                    n
+                )));
+            }
             Literal::Char(character) => self.emit_literal_char(*character)?,
             Literal::String(s) => self.emit_literal_string(s)?,
             Literal::CharSet(charset) => self.emit_literal_charset(charset)?,
@@ -583,6 +582,7 @@ impl<'a> Compiler<'a> {
             PresetCharSetName::CharNotSpace => CharSetTransition::new_preset_not_space(),
             PresetCharSetName::CharDigit => CharSetTransition::new_preset_digit(),
             PresetCharSetName::CharNotDigit => CharSetTransition::new_preset_not_digit(),
+            PresetCharSetName::CharHex => CharSetTransition::new_preset_hex(),
         };
 
         let transition = Transition::CharSet(charset_transition);
@@ -684,9 +684,9 @@ impl<'a> Compiler<'a> {
     fn emit_capture_group_by_name(
         &mut self,
         expression: &Expression,
-        args: &[FunctionCallArg],
+        args: &[Expression],
     ) -> Result<Component, AnreError> {
-        let name = if let FunctionCallArg::Identifier(s) = &args[0] {
+        let name = if let Expression::Literal(Literal::String(s)) = &args[0] {
             s.to_owned()
         } else {
             unreachable!();
@@ -1745,7 +1745,7 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_capture_group_by_name() {
         // function call, and rear function call
-        for route in generate_routes(r#"name('a', foo), 'b'.name(bar)"#, r#"(?<foo>a)(?<bar>b)"#) {
+        for route in generate_routes(r#"name('a', "foo"), 'b'.name("bar")"#, r#"(?<foo>a)(?<bar>b)"#) {
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1778,7 +1778,7 @@ define(letter, ['a'..'f', char_space])
 
         // complex expressions as function call args
         for route in generate_routes(
-            r#"name(('a', char_digit), foo), ('x' || 'y').name(bar)"#,
+            r#"name(('a', char_digit), "foo"), ('x' || 'y').name("bar")"#,
             r#"(?<foo>a\d)(?<bar>(?:x|y))"#,
         ) {
             let s = route.get_debug_text();
@@ -1826,7 +1826,7 @@ define(letter, ['a'..'f', char_space])
 
         // nested function call
         {
-            let route = compile_from_anre(r#"name(name('a', foo), bar)"#).unwrap();
+            let route = compile_from_anre(r#"name(name('a', "foo"), "bar")"#).unwrap();
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1855,7 +1855,7 @@ define(letter, ['a'..'f', char_space])
 
         // chaining function call
         {
-            let route = compile_from_anre(r#"'a'.name(foo).name(bar)"#).unwrap();
+            let route = compile_from_anre(r#"'a'.name("foo").name("bar")"#).unwrap();
             let s = route.get_debug_text();
 
             assert_str_eq!(
@@ -1926,7 +1926,7 @@ define(letter, ['a'..'f', char_space])
     #[test]
     fn test_compile_backreference() {
         for route in generate_routes(
-            r#"'a'.name(foo), 'b', foo"#, // anre
+            r#"'a'.name("foo"), 'b', foo"#, // anre
             r#"(?<foo>a)b\k<foo>"#,       // regex
         ) {
             let s = route.get_debug_text();

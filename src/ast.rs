@@ -57,18 +57,12 @@ pub enum Expression {
 #[derive(Debug, PartialEq)]
 pub struct FunctionCall {
     pub name: FunctionName,
-    pub args: Vec<FunctionCallArg>,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum FunctionCallArg {
-    Number(usize),
-    Identifier(String),
-    Expression(Box<Expression>),
+    pub args: Vec<Expression>,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Literal {
+    Number(usize),
     Char(char),
     String(String),
     Special(SpecialCharName),
@@ -86,8 +80,8 @@ pub struct CharSet {
 pub enum CharSetElement {
     Char(char),
     CharRange(CharRange),
-    PresetCharSet(PresetCharSetName), // Only positive preset charsets are allowed.
-    CharSet(Box<CharSet>),            // Only positive custom charsets are allowed.
+    PresetCharSet(PresetCharSetName),
+    CharSet(Box<CharSet>), // Only positive charsets are allowed.
 }
 
 #[derive(Debug, PartialEq)]
@@ -152,6 +146,7 @@ pub enum PresetCharSetName {
     CharNotDigit,
     CharSpace,
     CharNotSpace,
+    CharHex, // ANRE only
 }
 
 impl Display for PresetCharSetName {
@@ -163,6 +158,7 @@ impl Display for PresetCharSetName {
             PresetCharSetName::CharNotDigit => "char_not_digit",
             PresetCharSetName::CharSpace => "char_space",
             PresetCharSetName::CharNotSpace => "char_not_space",
+            PresetCharSetName::CharHex => "char_hex",
         };
         f.write_str(name_str)
     }

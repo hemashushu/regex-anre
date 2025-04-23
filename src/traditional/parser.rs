@@ -9,8 +9,8 @@ pub const PARSER_PEEK_TOKEN_MAX_COUNT: usize = 1;
 use crate::{
     ast::{
         AnchorAssertionName, BackReference, BoundaryAssertionName, CharRange, CharSet,
-        CharSetElement, Expression, FunctionCall, FunctionCallArg, FunctionName, Literal,
-        PresetCharSetName, Program, SpecialCharName,
+        CharSetElement, Expression, FunctionCall, FunctionName, Literal, PresetCharSetName,
+        Program, SpecialCharName,
     },
     location::Location,
     peekableiter::PeekableIter,
@@ -124,7 +124,7 @@ impl Parser<'_> {
     }
 
     fn parse_logic_or(&mut self) -> Result<Expression, AnreError> {
-        // token ... [ "|" expression ]
+        // token ... [ "||" expression ]
         // -----
         // ^
         // | current, None or Some(...)
@@ -135,19 +135,19 @@ impl Parser<'_> {
         let mut left = self.parse_consecutive_expression()?;
 
         // """
-        // The | operator has the lowest precedence in a regular expression.
+        // The || operator has the lowest precedence in a regular expression.
         // If you want to use a disjunction as a part of a bigger pattern,
         // you must group it.
         // """
         //
         // e.g.
-        // "ab|cd" == "(ab)|(cd)"
-        // "ab|cd" != "a(b|c)d)"
+        // "ab||cd" == "(ab)||(cd)"
+        // "ab||cd" != "a(b||c)d)"
         //
         // ref:
         // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Disjunction
         while let Some(Token::LogicOr) = self.peek_token(0) {
-            self.next_token(); // consume "|"
+            self.next_token(); // consume "||"
 
             // Operator associativity
             // - https://en.wikipedia.org/wiki/Operator_associativity
@@ -293,8 +293,7 @@ impl Parser<'_> {
 
                     let function_call = FunctionCall {
                         name,
-                        // expression: Box::new(expression),
-                        args: vec![FunctionCallArg::Expression(Box::new(expression))],
+                        args: vec![expression],
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
 
@@ -302,7 +301,7 @@ impl Parser<'_> {
                 }
                 Token::Repetition(repetition, lazy) => {
                     let mut args = vec![];
-                    args.push(FunctionCallArg::Expression(Box::new(expression)));
+                    args.push(expression);
 
                     let name = match repetition {
                         Repetition::Specified(n) => {
@@ -311,11 +310,11 @@ impl Parser<'_> {
                                     "Specified number of repetitions does not support lazy mode, i.e. '{m}?' is not allowed.".to_owned(), self.last_range));
                             }
 
-                            args.push(FunctionCallArg::Number(*n));
+                            args.push(Expression::Literal(Literal::Number(*n)));
                             FunctionName::Repeat
                         }
                         Repetition::AtLeast(n) => {
-                            args.push(FunctionCallArg::Number(*n));
+                            args.push(Expression::Literal(Literal::Number(*n)));
 
                             if *lazy {
                                 FunctionName::AtLeastLazy
@@ -329,8 +328,8 @@ impl Parser<'_> {
                                     "Specified number of repetitions does not support lazy mode, i.e. '{m,m}?' is not allowed.".to_owned(), self.last_range));
                             }
 
-                            args.push(FunctionCallArg::Number(*m));
-                            args.push(FunctionCallArg::Number(*n));
+                            args.push(Expression::Literal(Literal::Number(*m)));
+                            args.push(Expression::Literal(Literal::Number(*n)));
 
                             if *lazy {
                                 FunctionName::RepeatRangeLazy
@@ -362,11 +361,7 @@ impl Parser<'_> {
 
                     let function_call = FunctionCall {
                         name,
-                        // expression: Box::new(expression),
-                        args: vec![
-                            FunctionCallArg::Expression(Box::new(expression)),
-                            FunctionCallArg::Expression(Box::new(arg0)),
-                        ],
+                        args: vec![expression, arg0],
                     };
                     expression = Expression::FunctionCall(Box::new(function_call));
                 }
@@ -426,11 +421,7 @@ impl Parser<'_> {
 
                 let function_call = FunctionCall {
                     name,
-                    // expression: Box::new(expression),
-                    args: vec![
-                        FunctionCallArg::Expression(Box::new(expression)),
-                        FunctionCallArg::Expression(Box::new(arg0)),
-                    ],
+                    args: vec![expression, arg0],
                 };
                 Expression::FunctionCall(Box::new(function_call))
             }
@@ -475,11 +466,10 @@ impl Parser<'_> {
 
         let group_expression = match head_token {
             Token::GroupStart => {
-                // regex group == ANRE indexed capture group
+                // regex group is equivalent to ANRE indexed capture group
                 let function_call = FunctionCall {
                     name: FunctionName::Index,
-                    // expression: Box::new(expression),
-                    args: vec![FunctionCallArg::Expression(Box::new(expression))],
+                    args: vec![expression],
                 };
                 Expression::FunctionCall(Box::new(function_call))
             }
@@ -491,10 +481,9 @@ impl Parser<'_> {
                 // named capture group
                 let function_call = FunctionCall {
                     name: FunctionName::Name,
-                    // expression: Box::new(expression),
                     args: vec![
-                        FunctionCallArg::Expression(Box::new(expression)),
-                        FunctionCallArg::Identifier(name),
+                        expression,
+                        Expression::Literal(Literal::String(name.to_owned())),
                     ],
                 };
                 Expression::FunctionCall(Box::new(function_call))
@@ -858,7 +847,7 @@ end"#
             parse_from_str(r#"(?<tag>\w+).+\k<tag>\1"#,)
                 .unwrap()
                 .to_string(),
-            r#"name(one_or_more(char_word), tag)
+            r#"name(one_or_more(char_word), "tag")
 one_or_more(char_any)
 tag, ^1"#
         );
@@ -930,7 +919,7 @@ end"#
                 .unwrap()
                 .to_string(),
             r#"'<'
-name(one_or_more(char_word), tag_name)
+name(one_or_more(char_word), "tag_name")
 zero_or_more(index((char_space, one_or_more(char_word), "="", one_or_more(char_word), '"')))
 '>'
 one_or_more_lazy(char_any)
